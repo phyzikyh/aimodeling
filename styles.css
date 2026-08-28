@@ -161,3 +161,35 @@ hr {
 .quiz-reset-btn:hover { background: #f4f7fa; }
 .quiz-score { font-weight: 800; font-size: 1.05rem; color: #16181d; }
 .quiz-score .s-num { color: #1AB18B; }
+
+/* ==========================================================
+   좌측 사이드바(목차) — 주차별 하위 항목을 1·2·3으로 번호 매김
+   (이론/연습문제/코딩실습). 녹색 활성 강조는 사용하지 않음.
+   ========================================================== */
+
+/* 주차 하위 목록에서는 책의 연속 챕터 번호를 숨긴다(index의 번호는 유지) */
+#quarto-sidebar .sidebar-section.depth1 .chapter-number { display: none; }
+
+/* 각 주차마다 카운터를 1부터 다시 매겨 하위 제목 앞에 붙인다 */
+#quarto-sidebar .sidebar-section.depth1 { counter-reset: weekitem; }
+#quarto-sidebar .sidebar-section.depth1 > .sidebar-item .chapter-title::before {
+  counter-increment: weekitem;
+  content: counter(weekitem) ". ";
+  color: #8a97a3;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 주차(파트) 헤더는 굵게 */
+#quarto-sidebar .sidebar-item-section > .sidebar-item-container .menu-text {
+  font-weight: 800;
+  color: #16181d;
+}
+
+/* 하위 항목: 들여쓰기 + 얇은 좌측 가이드선, 중립 색상 */
+#quarto-sidebar .sidebar-section.depth1 {
+  margin-left: 0.55rem;
+  border-left: 1px solid #e8edf2;
+  padding-left: 0.3rem;
+}
+#quarto-sidebar .sidebar-section.depth1 .sidebar-link { color: #4a5560; }
+#quarto-sidebar .sidebar-section.depth1 .sidebar-link:hover { color: #16181d; }
