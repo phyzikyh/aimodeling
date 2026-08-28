@@ -1,0 +1,325 @@
+# 5주차 연습문제 {#sec-ch5-quiz}
+
+다음 20문항은 4지선다입니다. 각 문항에서 정답이라고 생각하는 **선택지를 클릭**해 표시한 뒤, 맨 아래 **정답확인** 버튼을 누르면 채점 결과(정답·오답)와 해설, 점수가 나타납니다.
+
+
+
+::: {.quiz-item}
+**1.** 완전연결망을 이미지에 그대로 쓸 때의 문제로 옳은 것은?
+
+① 파라미터가 너무 적다
+
+[② 파라미터 폭발과 공간 구조 소실]{.quiz-correct}
+
+③ 색을 못 다룬다
+
+④ 학습이 불필요
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**2.** 컬러 이미지를 파이토치에서 다루는 표준 텐서 순서는?
+
+① (H, W, C)
+
+[② (C, H, W)]{.quiz-correct}
+
+③ (W, H, C)
+
+④ (H, C, W)
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②. 배치 포함 시 (N, C, H, W)입니다.
+:::
+:::
+
+::: {.quiz-item}
+**3.** 합성곱의 커널 값은 어떻게 정해지는가?
+
+① 사람이 수동 설계
+
+[② 학습으로 결정]{.quiz-correct}
+
+③ 항상 고정
+
+④ 무작위 유지
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**4.** 입력 32, 커널 5, 패딩 0, 스트라이드 1일 때 출력 크기는?
+
+① 26
+
+② 27
+
+[③ 28]{.quiz-correct}
+
+④ 32
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ③. $(32-5+0)/1+1=28$.
+:::
+:::
+
+::: {.quiz-item}
+**5.** 패딩의 주요 목적으로 옳은 것은?
+
+① 채널 증가
+
+[② 가장자리 정보 보존·출력 크기 조절]{.quiz-correct}
+
+③ 학습률 조정
+
+④ 색 변환
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**6.** 합성곱 층의 파라미터 수가 입력 이미지 크기와 무관한 이유는?
+
+① 풀링 때문
+
+[② 파라미터 공유(커널이 모든 위치에 동일)]{.quiz-correct}
+
+③ 드롭아웃
+
+④ 배치 정규화
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**7.** CNN의 핵심 원리가 아닌 것은?
+
+① 지역 수용 영역
+
+② 파라미터 공유
+
+③ 이동 등변성
+
+[④ 완전 연결]{.quiz-correct}
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ④.
+:::
+:::
+
+::: {.quiz-item}
+**8.** $1\times1$ 합성곱의 주된 역할은?
+
+① 공간 크기 확대
+
+[② 채널 결합·차원 조절]{.quiz-correct}
+
+③ 회전 불변
+
+④ 패딩 대체
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**9.** 최대 풀링의 효과로 옳은 것은?
+
+① 파라미터 증가
+
+[② 국소 이동 불변성·크기 축소]{.quiz-correct}
+
+③ 채널 증가
+
+④ 색 보정
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**10.** 완전연결층을 대체해 파라미터를 줄이는 마지막 요약 연산은?
+
+① 최대 풀링
+
+[② 전역 평균 풀링]{.quiz-correct}
+
+③ 배치 정규화
+
+④ 드롭아웃
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**11.** 딥러닝에서 "합성곱"이라 부르는 연산의 실제 정체는?
+
+① 푸리에 변환
+
+[② 상호상관(cross-correlation)]{.quiz-correct}
+
+③ 행렬 역변환
+
+④ 풀링
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**12.** 층을 쌓을수록 넓어지는, 뉴런이 원래 입력에서 보는 영역은?
+
+① 특징 맵
+
+[② 수용 영역]{.quiz-correct}
+
+③ 커널
+
+④ 채널
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**13.** VGG가 큰 커널 대신 작은($3\times3$) 커널을 깊게 쌓은 이점은?
+
+① 파라미터 증가
+
+[② 같은 수용 영역을 더 적은 파라미터·더 많은 비선형으로]{.quiz-correct}
+
+③ 색 보존
+
+④ 풀링 제거
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**14.** 깊은 망의 열화 문제를 잔차 연결로 해결한 모델은?
+
+① AlexNet
+
+② VGG
+
+[③ ResNet]{.quiz-correct}
+
+④ LeNet
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ③.
+:::
+:::
+
+::: {.quiz-item}
+**15.** 잔차 연결 $y=F(x)+x$가 학습에 주는 이점은?
+
+① 파라미터 제거
+
+[② 기울기가 지름길로 흘러 소실 완화]{.quiz-correct}
+
+③ 색 변환
+
+④ 풀링 대체
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**16.** 이미지 데이터 증강의 목적으로 옳은 것은?
+
+① 파라미터 증가
+
+[② 변형에 강인해져 과적합 감소]{.quiz-correct}
+
+③ 채널 축소
+
+④ 학습률 상승
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**17.** 전이학습이 효과적인 근본 이유는?
+
+① 라벨 불필요
+
+[② 앞쪽 층의 저수준 특징이 과제 간 공통]{.quiz-correct}
+
+③ 파라미터가 없어서
+
+④ 풀링 때문
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**18.** 사전학습 합성곱부를 동결하고 분류기만 새로 학습하는 전략은?
+
+① 미세조정
+
+[② 특징 추출]{.quiz-correct}
+
+③ 처음부터 학습
+
+④ 데이터 증강
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**19.** 미세조정에서 낮은 학습률을 쓰는 이유는?
+
+① 속도 향상
+
+[② 좋은 사전학습 특징을 크게 망가뜨리지 않기 위해]{.quiz-correct}
+
+③ 메모리 절약
+
+④ 색 보정
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**20.** 데이터가 적고 과제가 원래 과제와 매우 유사할 때 권장 전략은?
+
+① 전체 미세조정
+
+[② 특징 추출(분류기만 학습)]{.quiz-correct}
+
+③ 처음부터 학습
+
+④ 모델 폐기
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::

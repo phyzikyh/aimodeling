@@ -1,0 +1,325 @@
+# 1주차 연습문제 {#sec-ch1-quiz}
+
+다음 20문항은 4지선다입니다. 각 문항에서 정답이라고 생각하는 **선택지를 클릭**해 표시한 뒤, 맨 아래 **정답확인** 버튼을 누르면 채점 결과(정답·오답)와 해설, 점수가 나타납니다.
+
+
+
+::: {.quiz-item}
+**1.** GPU 계산 스택에서 가장 먼저(가장 낮은 계층에) 설치해야 하는 것은?
+
+① cuDNN
+
+② CUDA Toolkit
+
+[③ NVIDIA 드라이버]{.quiz-correct}
+
+④ PyTorch
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ③. 드라이버가 OS와 GPU를 잇는 최하위 계층이므로 가장 먼저 설치합니다.
+:::
+:::
+
+::: {.quiz-item}
+**2.** `nvidia-smi` 오른쪽 위에 표시되는 CUDA Version이 의미하는 것은?
+
+① 설치된 파이토치의 CUDA
+
+[② 드라이버가 지원하는 최대 CUDA]{.quiz-correct}
+
+③ cuDNN 버전
+
+④ 파이썬 버전
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②. 이 값 이하의 CUDA 런타임을 쓰는 파이토치는 정상 동작합니다.
+:::
+:::
+
+::: {.quiz-item}
+**3.** 넘파이 배열과 파이토치 텐서의 결정적 차이로 옳은 것은?
+
+① 텐서는 정수만 저장한다
+
+[② 텐서는 GPU 연산과 자동미분을 지원한다]{.quiz-correct}
+
+③ 배열이 더 빠르다
+
+④ 차이가 없다
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②. GPU 이동과 autograd가 텐서를 딥러닝 자료구조로 만듭니다.
+:::
+:::
+
+::: {.quiz-item}
+**4.** `A * B`와 `A @ B`의 차이는?
+
+① 둘 다 행렬 곱
+
+[② `*`는 요소별 곱, `@`는 행렬 곱]{.quiz-correct}
+
+③ `*`는 행렬 곱
+
+④ 둘 다 요소별 곱
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**5.** 모양이 (3,3)인 행렬에 (1,3) 행벡터를 더하면 결과 모양은?
+
+① (1,3)
+
+② (3,1)
+
+[③ (3,3)]{.quiz-correct}
+
+④ 오류
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ③. 행벡터가 각 행에 브로드캐스팅됩니다.
+:::
+:::
+
+::: {.quiz-item}
+**6.** (3,3) 행렬의 각 "열"에 서로 다른 값을 더하려면 더할 벡터의 모양은?
+
+① (1,3)
+
+② (3,)
+
+[③ (3,1)]{.quiz-correct}
+
+④ (3,3)만 가능
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ③. 열 방향 브로드캐스팅에는 (3,1) 열벡터가 필요합니다.
+:::
+:::
+
+::: {.quiz-item}
+**7.** GPU가 딥러닝에서 CPU보다 유리한 근본 이유는?
+
+① 클럭이 훨씬 높아서
+
+[② 대규모 병렬 연산에 최적화되어서]{.quiz-correct}
+
+③ 메모리가 항상 더 커서
+
+④ 분기 예측이 좋아서
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②. 수천 코어로 동일 연산을 병렬 수행합니다.
+:::
+:::
+
+::: {.quiz-item}
+**8.** CPU 텐서와 GPU 텐서를 직접 더하면?
+
+① 자동 이동 후 계산
+
+[② 오류 발생]{.quiz-correct}
+
+③ CPU로 계산
+
+④ GPU로 계산
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②. 연산 텐서는 같은 장치에 있어야 합니다.
+:::
+:::
+
+::: {.quiz-item}
+**9.** `x.requires_grad=True`인 텐서에 `.backward()`를 호출하면?
+
+① 순전파 재실행
+
+[② 기울기가 `.grad`에 저장]{.quiz-correct}
+
+③ 텐서 삭제
+
+④ GPU로 이동
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②. 연쇄법칙으로 기울기를 계산해 저장합니다.
+:::
+:::
+
+::: {.quiz-item}
+**10.** $f(x)=x^2+3x$의 $x=2$에서 미분값은?
+
+① 4
+
+② 5
+
+[③ 7]{.quiz-correct}
+
+④ 10
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ③. $f'(x)=2x+3$, $f'(2)=7$.
+:::
+:::
+
+::: {.quiz-item}
+**11.** MLP에서 비선형 활성화 함수를 모두 제거하면?
+
+① 표현력이 늘어난다
+
+[② 전체가 하나의 아핀 변환으로 축약된다]{.quiz-correct}
+
+③ 학습이 빨라진다
+
+④ 변화 없다
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②. 선형의 합성은 선형이므로 층을 쌓는 의미가 사라집니다.
+:::
+:::
+
+::: {.quiz-item}
+**12.** 이진 분류에 수치적으로 안정적인 손실은?
+
+① `MSELoss`
+
+② `CrossEntropyLoss`
+
+[③ `BCEWithLogitsLoss`]{.quiz-correct}
+
+④ `L1Loss`
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ③. 시그모이드와 BCE를 하나로 묶어 안정적입니다.
+:::
+:::
+
+::: {.quiz-item}
+**13.** 특성 표준화의 통계량(평균·표준편차)은 어디에서 계산해야 하는가?
+
+① 전체 데이터
+
+[② 훈련 데이터만]{.quiz-correct}
+
+③ 테스트 데이터
+
+④ 검증 데이터
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②. 그래야 정보 누출을 막습니다.
+:::
+:::
+
+::: {.quiz-item}
+**14.** `DataLoader`의 `shuffle=True`가 필요한 단계는?
+
+[① 훈련]{.quiz-correct}
+
+② 검증
+
+③ 테스트
+
+④ 모든 단계
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ①. 훈련에서만 섞고, 검증·테스트는 순서를 고정합니다.
+:::
+:::
+
+::: {.quiz-item}
+**15.** 검증·테스트 시 `torch.no_grad()`를 쓰는 이유는?
+
+① 정확도 상승
+
+[② 기울기 계산을 생략해 메모리·속도 절약]{.quiz-correct}
+
+③ 라벨 숨김
+
+④ 필수 아님
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**16.** 미니배치마다 `optimizer.zero_grad()`를 호출하지 않으면?
+
+[① 기울기가 누적되어 잘못 갱신]{.quiz-correct}
+
+② 속도 향상
+
+③ 변화 없음
+
+④ 자동 초기화됨
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ①. 파이토치는 기울기를 누적하므로 매번 초기화해야 합니다.
+:::
+:::
+
+::: {.quiz-item}
+**17.** Adam 옵티마이저의 특징으로 옳은 것은?
+
+① 고정 학습률만 사용
+
+[② 파라미터별 적응적 학습률]{.quiz-correct}
+
+③ 기울기 미사용
+
+④ 2차 미분 필요
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**18.** `CosineAnnealingLR`의 역할은?
+
+① 배치 크기 조절
+
+[② 학습률을 코사인 곡선으로 감소]{.quiz-correct}
+
+③ 손실 함수 교체
+
+④ 드롭아웃 비율 조절
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**19.** `model.eval()`이 영향을 주는 대표적 계층은?
+
+① Linear
+
+② ReLU
+
+[③ Dropout·BatchNorm]{.quiz-correct}
+
+④ Softmax
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ③. 이들은 학습/평가 모드 동작이 다릅니다.
+:::
+:::
+
+::: {.quiz-item}
+**20.** 학습 루프 템플릿에서 문제 유형이 바뀔 때 주로 교체되는 부분이 아닌 것은?
+
+① 데이터셋
+
+② 모델 출력층
+
+③ 손실 함수
+
+[④ 파이썬 인터프리터]{.quiz-correct}
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ④. 데이터셋·출력층·손실만 바뀌고 뼈대는 유지됩니다.
+:::
+:::

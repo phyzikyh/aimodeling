@@ -1,0 +1,140 @@
+# 2주차 코딩 실습 {#sec-ch2-lab}
+
+이 실습은 옵티마이저·정규화·검증 전략의 효과를 직접 비교하는 실험입니다.
+
+## 예제 코드
+
+MNIST 대신, 다운로드가 필요 없는 scikit-learn의 손글씨 숫자(`load_digits`, 8×8, 10클래스)로 다중 분류 MLP를 학습합니다.
+
+```python
+import torch, torch.nn as nn, torch.optim as optim
+from torch.utils.data import TensorDataset, DataLoader, random_split
+from sklearn.datasets import load_digits
+from sklearn.preprocessing import StandardScaler
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+torch.manual_seed(0)
+
+data = load_digits()
+X = StandardScaler().fit_transform(data.data)     # (1797, 64)
+X = torch.tensor(X, dtype=torch.float32)
+y = torch.tensor(data.target, dtype=torch.long)   # 0..9
+
+ds = TensorDataset(X, y)
+n = len(ds); n_tr, n_va = int(0.7*n), int(0.15*n)
+tr, va, te = random_split(ds, [n_tr, n_va, n-n_tr-n_va],
+                          generator=torch.Generator().manual_seed(0))
+tl = DataLoader(tr, batch_size=64, shuffle=True)
+vl, el = DataLoader(va, batch_size=256), DataLoader(te, batch_size=256)
+
+def build(dropout=0.0):
+    return nn.Sequential(
+        nn.Linear(64,128), nn.ReLU(), nn.Dropout(dropout),
+        nn.Linear(128,64), nn.ReLU(), nn.Dropout(dropout),
+        nn.Linear(64,10)).to(device)
+
+def run(model, loader, crit, opt=None):
+    train = opt is not None
+    model.train() if train else model.eval()
+    L=C=Nn=0
+    with torch.set_grad_enabled(train):
+        for xb, yb in loader:
+            xb, yb = xb.to(device), yb.to(device)
+            out = model(xb); loss = crit(out, yb)
+            if train: opt.zero_grad(); loss.backward(); opt.step()
+            L += loss.item()*len(xb); C += (out.argmax(1)==yb).sum().item(); Nn += len(xb)
+    return L/Nn, C/Nn
+
+model = build(dropout=0.2)
+crit = nn.CrossEntropyLoss()
+opt  = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-4)
+for ep in range(1, 31):
+    run(model, tl, crit, opt)
+print("test acc:", round(run(model, el, crit)[1], 3))
+```
+
+## 실습문제
+
+**문제 1. 옵티마이저 비교.** `SGD`(모멘텀 0.9), `Adam`, `AdamW`(`optim.AdamW`) 세 가지로 각각 학습해 테스트 정확도와 학습 곡선을 비교하세요. 결과를 표로 정리합니다.
+
+```python
+def make_opt(name, params):
+    # TODO: name이 "sgd"면 SGD(lr=0.05, momentum=0.9),
+    #       "adam"이면 Adam(lr=1e-3), "adamw"면 AdamW(lr=1e-3, weight_decay=1e-2)
+    ...
+```
+
+**문제 2. 드롭아웃 효과.** `dropout`을 0.0, 0.2, 0.5로 바꿔 훈련·검증 정확도 격차(과적합 정도)를 비교하고, 어떤 값이 일반화에 가장 좋은지 설명하세요.
+
+**문제 3. K-겹 교차검증.** 훈련+검증 데이터를 합쳐 5-겹 교차검증을 구현하고, 5개 폴드의 검증 정확도 평균과 표준편차를 출력하세요. (힌트: `sklearn.model_selection.KFold`로 인덱스를 나눠 `Subset` 사용)
+
+**문제 4. 초기화 비교.** 모델 가중치를 (a) 기본, (b) He 초기화(`kaiming_normal_`)로 명시 초기화한 두 경우의 초기 몇 에폭 손실 감소 속도를 비교하세요.
+
+**제출물**: 완성된 `.py`와 문제 1~4의 결과 표·그래프 및 3~5문장 분석.
+
+## 교수용 정답 및 해설 {.unnumbered}
+
+::: {.callout-note collapse="true" title="문제 1 정답 및 해설"}
+```python
+def make_optimizer(name, model):
+    if name == "sgd":
+        return optim.SGD(model.parameters(), lr=0.05, momentum=0.9)
+    if name == "adam":
+        return optim.Adam(model.parameters(), lr=1e-3)
+    if name == "adamw":
+        return optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
+    raise ValueError(name)
+```
+
+각 실험은 모델을 새로 만들고 같은 초기 가중치와 데이터 분할을 사용해야 합니다. Adam 계열은 초반 수렴이 빠른 경우가 많고, SGD는 학습률 조정에 민감하지만 좋은 일반화 성능을 낼 수 있습니다. 결과는 단일 실행보다 여러 seed의 평균과 표준편차로 비교합니다.
+:::
+
+::: {.callout-note collapse="true" title="문제 2 정답 및 해설"}
+```python
+class MLP(nn.Module):
+    def __init__(self, dropout=0.0):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(in_dim, 128), nn.ReLU(), nn.Dropout(dropout),
+            nn.Linear(128, 64), nn.ReLU(), nn.Dropout(dropout),
+            nn.Linear(64, out_dim)
+        )
+```
+
+Dropout이 0이면 훈련 성능은 높지만 검증 성능과의 격차가 커질 수 있습니다. 너무 큰 0.5는 정보 손실로 과소적합될 수 있습니다. 가장 좋은 값은 검증 정확도가 높고 훈련-검증 격차가 작은 값으로 선택합니다.
+:::
+
+::: {.callout-note collapse="true" title="문제 3 정답 및 해설"}
+```python
+from sklearn.model_selection import KFold
+from torch.utils.data import Subset
+
+kfold = KFold(n_splits=5, shuffle=True, random_state=42)
+scores = []
+for train_idx, val_idx in kfold.split(range(len(dataset))):
+    train_ds = Subset(dataset, train_idx)
+    val_ds = Subset(dataset, val_idx)
+    model = MLP().to(device)          # 폴드마다 새 모델
+    # train_loader, val_loader 생성 후 학습·평가
+    scores.append(val_acc)
+
+print(np.mean(scores), np.std(scores))
+```
+
+폴드마다 모델과 옵티마이저를 새로 초기화해야 이전 폴드의 학습 정보가 누출되지 않습니다.
+:::
+
+::: {.callout-note collapse="true" title="문제 4 정답 및 해설"}
+```python
+def init_he(module):
+    if isinstance(module, nn.Linear):
+        nn.init.kaiming_normal_(module.weight, nonlinearity="relu")
+        nn.init.zeros_(module.bias)
+
+model_he = MLP()
+model_he.apply(init_he)
+```
+
+He 초기화는 ReLU를 통과한 뒤에도 활성값과 기울기의 분산이 지나치게 줄거나 커지지 않도록 설계되었습니다. 같은 초기 seed에서 초기 5~10 epoch의 손실 곡선을 비교합니다.
+:::
+

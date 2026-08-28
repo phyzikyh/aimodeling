@@ -1,0 +1,324 @@
+# 3주차 연습문제 {#sec-ch3-quiz}
+
+다음 20문항은 4지선다입니다. 각 문항에서 정답이라고 생각하는 **선택지를 클릭**해 표시한 뒤, 맨 아래 **정답확인** 버튼을 누르면 채점 결과(정답·오답)와 해설, 점수가 나타납니다.
+
+
+::: {.quiz-item}
+**1.** AR 모델이 현재 값을 설명하는 데 사용하는 것은?
+
+① 과거 예측 오차
+
+[② 과거 관측값]{.quiz-correct}
+
+③ 미래 값
+
+④ 잡음만
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**2.** MA 모델이 사용하는 것은?
+
+① 과거 관측값
+
+[② 과거 예측 오차(충격)]{.quiz-correct}
+
+③ 미래 오차
+
+④ 상수만
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**3.** ARIMA의 'I'(차분)가 목적하는 것은?
+
+① 계절성 제거
+
+[② 비정상 시계열의 정상화]{.quiz-correct}
+
+③ 잡음 증폭
+
+④ 차원 축소
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**4.** RNN에서 모든 시점이 공유하는 것은?
+
+① 은닉 상태
+
+② 입력 값
+
+[③ 순환 가중치 W]{.quiz-correct}
+
+④ 출력 값
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ③.
+:::
+:::
+
+::: {.quiz-item}
+**5.** RNN 학습에 쓰이는 역전파 방식의 이름은?
+
+① 드롭아웃
+
+[② BPTT(시간에 대한 역전파)]{.quiz-correct}
+
+③ 배치정규화
+
+④ 모멘텀
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**6.** 기본 RNN의 대표적 한계는?
+
+① 과소 파라미터
+
+[② 장기 의존성 학습 곤란(기울기 소실/폭발)]{.quiz-correct}
+
+③ 병렬화 과다
+
+④ 라벨 불필요
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**7.** LSTM에서 정보를 거의 손실 없이 나르는 경로는?
+
+① 출력 게이트
+
+[② 셀 상태]{.quiz-correct}
+
+③ 입력 벡터
+
+④ 편향
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**8.** LSTM의 세 게이트가 아닌 것은?
+
+① 망각 게이트
+
+② 입력 게이트
+
+③ 출력 게이트
+
+[④ 리셋 게이트]{.quiz-correct}
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ④. 리셋 게이트는 GRU의 것입니다.
+:::
+:::
+
+::: {.quiz-item}
+**9.** LSTM 게이트에 시그모이드를 쓰는 이유는?
+
+[① 출력을 0~1로 만들어 정보 통과량 조절]{.quiz-correct}
+
+② 음수 생성
+
+③ 계산 절약
+
+④ 확률 정규화
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ①.
+:::
+:::
+
+::: {.quiz-item}
+**10.** 셀 상태 갱신 $c_t=f_t\odot c_{t-1}+i_t\odot\tilde c_t$에서 소실을 완화하는 핵심 성질은?
+
+① 곱셈 구조
+
+[② 덧셈 구조]{.quiz-correct}
+
+③ 시그모이드
+
+④ 편향
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②. 덧셈 경로가 기울기를 보존합니다.
+:::
+:::
+
+::: {.quiz-item}
+**11.** LSTM에 망각 게이트를 추가해 연속 예측 성능을 높인 연구는?
+
+① Elman 1990
+
+[② Gers 2000]{.quiz-correct}
+
+③ Cho 2014
+
+④ Vaswani 2017
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**12.** GRU가 사용하는 두 게이트는?
+
+① 망각·출력
+
+[② 리셋·업데이트]{.quiz-correct}
+
+③ 입력·출력
+
+④ 망각·입력
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**13.** GRU가 LSTM과 달리 통합한 것은?
+
+[① 셀 상태와 은닉 상태]{.quiz-correct}
+
+② 입력과 출력
+
+③ 손실과 지표
+
+④ 배치와 시점
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ①.
+:::
+:::
+
+::: {.quiz-item}
+**14.** GRU의 은닉 갱신 $(1-z_t)\odot h_{t-1}+z_t\odot\tilde h_t$의 형태는?
+
+① 외적
+
+[② 볼록 결합]{.quiz-correct}
+
+③ 내적
+
+④ 행렬 곱
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**15.** GRU가 LSTM 대비 갖는 일반적 장점은?
+
+① 항상 더 정확
+
+[② 파라미터가 적어 가볍고 빠름]{.quiz-correct}
+
+③ 게이트가 더 많음
+
+④ 상태가 둘
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**16.** 양방향 LSTM의 각 시점 출력은 어떻게 구성되는가?
+
+① 순방향만
+
+② 역방향만
+
+[③ 두 방향 은닉의 연결]{.quiz-correct}
+
+④ 두 방향의 평균만
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ③.
+:::
+:::
+
+::: {.quiz-item}
+**17.** BiLSTM을 쓸 수 없는 상황은?
+
+① 개체명 인식
+
+② 음소 분류
+
+[③ 실시간 미래 예측]{.quiz-correct}
+
+④ 문서 분류
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ③. 미래 정보가 필요하기 때문입니다.
+:::
+:::
+
+::: {.quiz-item}
+**18.** 파이토치에서 `nn.LSTM(bidirectional=True)`일 때 분류 헤드 입력 차원은?
+
+① hidden
+
+[② hidden×2]{.quiz-correct}
+
+③ hidden÷2
+
+④ 1
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**19.** `nn.LSTM(..., batch_first=True)`일 때 입력 텐서의 모양은?
+
+① (T, B, F)
+
+[② (B, T, F)]{.quiz-correct}
+
+③ (F, T, B)
+
+④ (B, F, T)
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**20.** 순환 신경망의 근본적 계산 한계로, 트랜스포머 등장의 배경이 된 것은?
+
+① 파라미터 부족
+
+[② 시점 순차 처리로 병렬화 곤란]{.quiz-correct}
+
+③ 라벨 부족
+
+④ 활성화 함수 부재
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::

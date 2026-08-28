@@ -1,0 +1,163 @@
+/*-- scss:rules --*/
+/* ==========================================================
+   AI 모델링 실습 · Quarto Book 스타일
+   ========================================================== */
+
+body {
+  font-size: 1.02rem;
+  line-height: 1.7;
+}
+
+/* 본문 폭을 조금 넓혀 수식/그림이 여유 있게 보이도록 */
+.page-columns {
+  --mermaid-max-width: 900px;
+}
+
+/* mermaid 다이어그램 가운데 정렬 및 폭 제어 */
+.cell-output-display svg,
+pre.mermaid svg,
+div.mermaid svg {
+  display: block;
+  margin: 0 auto;
+  max-width: 100%;
+  height: auto;
+}
+figure.quarto-float-fig,
+div.quarto-figure {
+  text-align: center;
+}
+
+/* 표 가독성 */
+table {
+  font-size: 0.95rem;
+}
+thead th {
+  background: #eef4fb;
+}
+
+/* 정의·핵심 콜아웃 느낌의 인용구 */
+blockquote {
+  border-left: 5px solid #2c7be5;
+  background: #f6f9fe;
+  padding: 12px 18px;
+  color: #23303a;
+}
+
+/* 코드블록 */
+pre.sourceCode {
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+/* 연습문제/실습 섹션 구분용 수평선 강조 */
+hr {
+  border-top: 2px solid #d5dde5;
+}
+
+/* 수식 번호가 오른쪽에 잘 붙도록 */
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0;
+}
+
+/* 중요 강조 (사용자 지정 색 #1AB18B) */
+.key {
+  color: #1AB18B;
+  font-weight: 700;
+}
+/* 핵심 요약 박스 */
+.keybox {
+  border-left: 5px solid #1AB18B;
+  background: #eafaf4;
+  padding: 12px 18px;
+  margin: 16px 0;
+  border-radius: 6px;
+}
+.keybox p { margin: 0; }
+:root:not([data-theme="light"]) .keybox { background: #10261f; }
+
+/* 수동 그림 캡션 (MIT vision book 스타일: 설명형·가운데·작게) */
+.figcap {
+  text-align: center;
+  font-size: 0.9rem;
+  color: #57606a;
+  margin: 8px auto 22px;
+  max-width: 94%;
+  line-height: 1.55;
+}
+.figcap strong, .figcap b { color: #1f2328; }
+/* 본문 그림 가운데 정렬·여백 */
+.figbody { text-align: center; margin-top: 6px; }
+.figbody img { max-width: 100%; height: auto; border-radius: 6px; }
+
+
+/* ==========================================================
+   연습문제 — 인터랙티브 정답확인(채점) UI
+   선택지 클릭 → '정답확인' → 채점(정답 ✓/오답 ✗)·점수·다시 풀기
+   ========================================================== */
+
+/* 문항 컨테이너 간격 */
+.quiz-item { border-bottom: 1px solid #e5e8ec; padding: 1rem 0 1.4rem; margin-bottom: 1.1rem; }
+.quiz-item > p { margin: .45rem 0; }
+.quiz-item > p:first-child { margin-top: 0; margin-bottom: 1rem; }
+
+/* 정답 표식은 채점 전에는 본문색 그대로(정답 노출 방지) */
+.quiz-correct { color: inherit; font-weight: inherit; background: none; }
+
+/* 채점 전에는 해설(노트)을 숨긴다(연습문제 페이지에서만) */
+.quiz-active:not(.quiz-graded) .callout-note { display: none; }
+
+/* 선택지 = 체크박스형 클릭 항목 */
+.quiz-opt {
+  position: relative; cursor: pointer;
+  border: 1px solid #e3e7ec; border-radius: 9px;
+  padding: 8px 12px 8px 42px; margin: 6px 0;
+  transition: background .12s, border-color .12s; user-select: none;
+}
+.quiz-opt::before {
+  content: ""; position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  width: 18px; height: 18px; box-sizing: border-box;
+  border: 2px solid #b8c0cb; border-radius: 5px; background: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 900; color: #fff; line-height: 1;
+}
+.quiz-opt:hover { background: #f4f7fa; border-color: #cfd6de; }
+
+/* 학생이 고른 선택지(파랑 체크) */
+.quiz-opt.selected { background: #eef4fb; border-color: #3C6EB4; }
+.quiz-opt.selected::before { content: "✓"; background: #3C6EB4; border-color: #3C6EB4; }
+
+/* 채점 후 — 정답(초록 ✓)·내가 고른 오답(빨강 ✗) */
+.quiz-graded .quiz-opt { cursor: default; }
+.quiz-opt.is-correct {
+  background: #eafaf4; border-color: #1AB18B; color: #0d6e56; font-weight: 700;
+}
+.quiz-opt.is-correct::before { content: "✓"; background: #1AB18B; border-color: #1AB18B; }
+.quiz-opt.is-correct::after { content: " 정답"; color: #1AB18B; font-weight: 900; font-size: .85em; }
+.quiz-opt.is-wrong {
+  background: #fdecea; border-color: #E8402E; color: #a5281c;
+}
+.quiz-opt.is-wrong::before { content: "✗"; background: #E8402E; border-color: #E8402E; }
+.quiz-opt.is-wrong::after { content: " 내가 고른 답"; color: #E8402E; font-weight: 800; font-size: .85em; }
+
+/* 정답확인 / 다시 풀기 / 점수 바 */
+.quiz-actions {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  margin: 1.8rem 0 .4rem;
+}
+.quiz-check-btn {
+  background: #1AB18B; color: #fff; border: 0; border-radius: 10px;
+  padding: 11px 24px; font-size: 1.02rem; font-weight: 800; cursor: pointer;
+  box-shadow: 0 2px 6px rgba(26, 177, 139, .28);
+  transition: background .12s, transform .05s;
+}
+.quiz-check-btn:hover { background: #149b78; }
+.quiz-check-btn:active { transform: translateY(1px); }
+.quiz-reset-btn {
+  background: #fff; color: #4a4f57; border: 1px solid #cfd6de; border-radius: 10px;
+  padding: 11px 18px; font-weight: 700; cursor: pointer;
+}
+.quiz-reset-btn:hover { background: #f4f7fa; }
+.quiz-score { font-weight: 800; font-size: 1.05rem; color: #16181d; }
+.quiz-score .s-num { color: #1AB18B; }

@@ -1,0 +1,135 @@
+# 4주차 코딩 실습 {#sec-ch4-lab}
+
+이 실습은 셀프 어텐션을 직접 구현해 이해하고, 트랜스포머 인코더로 시계열을 예측합니다.
+
+## 예제 코드
+
+`nn.TransformerEncoder`로 다변량 합성 시계열의 다음 값을 예측합니다.
+
+```python
+import torch, torch.nn as nn, torch.optim as optim, math
+from torch.utils.data import TensorDataset, DataLoader
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+torch.manual_seed(0)
+
+# 다변량 합성 시계열: 3개 채널(서로 다른 주기)
+T = 4000
+t = torch.linspace(0, 120, T)
+ch = torch.stack([torch.sin(t), torch.sin(2*t+1), torch.cos(0.5*t)], dim=-1)
+ch = ch + 0.1*torch.randn_like(ch)          # (T, 3)
+
+L, H = 48, 1                                 # 과거 48시점 → 다음 1시점(채널0)
+X, Y = [], []
+for i in range(T-L-H):
+    X.append(ch[i:i+L]); Y.append(ch[i+L:i+L+H, 0])
+X, Y = torch.stack(X), torch.stack(Y)        # (N,48,3), (N,1)
+n_tr = int(0.8*len(X))
+tl = DataLoader(TensorDataset(X[:n_tr], Y[:n_tr]), batch_size=64, shuffle=True)
+el = DataLoader(TensorDataset(X[n_tr:], Y[n_tr:]), batch_size=256)
+
+class TSModel(nn.Module):
+    def __init__(self, n_feat=3, d=64, nhead=8, layers=2, horizon=1):
+        super().__init__()
+        self.proj = nn.Linear(n_feat, d)
+        enc = nn.TransformerEncoderLayer(d, nhead, batch_first=True,
+                                         dim_feedforward=128)
+        self.enc = nn.TransformerEncoder(enc, layers)
+        self.head = nn.Linear(d, horizon); self.d = d
+    def pe(self, T, dev):
+        pe = torch.zeros(T, self.d, device=dev)
+        pos = torch.arange(T, device=dev).unsqueeze(1).float()
+        div = torch.exp(torch.arange(0, self.d, 2, device=dev).float()
+                        * (-math.log(10000.0)/self.d))
+        pe[:,0::2]=torch.sin(pos*div); pe[:,1::2]=torch.cos(pos*div); return pe
+    def forward(self, x):
+        h = self.proj(x); h = h + self.pe(h.size(1), h.device)
+        return self.head(self.enc(h)[:, -1, :])
+
+model = TSModel().to(device)
+opt = optim.Adam(model.parameters(), lr=1e-3); crit = nn.MSELoss()
+for ep in range(15):
+    model.train()
+    for xb, yb in tl:
+        xb, yb = xb.to(device), yb.to(device)
+        opt.zero_grad(); loss = crit(model(xb), yb); loss.backward(); opt.step()
+model.eval(); se=n=0
+with torch.no_grad():
+    for xb, yb in el:
+        xb, yb = xb.to(device), yb.to(device)
+        se += ((model(xb)-yb)**2).sum().item(); n += len(xb)
+print("test MSE:", round(se/n, 4))
+```
+
+## 실습문제
+
+**문제 1. 셀프 어텐션 직접 구현.** 아래 함수를 완성하고, 무작위 입력에 대해 어텐션 가중치 각 행의 합이 1임을 `assert`로 확인하세요.
+
+```python
+import torch, torch.nn.functional as F
+def self_attention(X, Wq, Wk, Wv):
+    # X:(T,d), Wq/Wk/Wv:(d,d)
+    # TODO: Q,K,V 계산 → 스케일드 닷-프로덕트 → (출력, 가중치) 반환
+    ...
+```
+
+**문제 2. 헤드 수 실험.** 예제의 `nhead`를 1, 4, 8로 바꿔 테스트 MSE를 비교하세요. 단, `d_model`이 `nhead`로 나누어떨어져야 함에 유의합니다.
+
+**문제 3. 위치 인코딩 제거.** `pe`를 더하지 않은 모델과 더한 모델의 성능을 비교하고, 위치 인코딩이 시계열 예측에 왜 중요한지 셀프 어텐션의 순서 불변성으로 설명하세요.
+
+**문제 4. RNN과의 비교.** 3장에서 만든 LSTM 예측기와 이 트랜스포머의 테스트 MSE 및 학습 시간을 같은 데이터에서 비교하고, 3~5문장으로 장단점을 논하세요.
+
+**제출물**: 완성된 `.py`와 문제 1의 검증 출력, 문제 2~3 결과 표, 문제 4의 비교 분석.
+
+## 교수용 정답 및 해설 {.unnumbered}
+
+::: {.callout-note collapse="true" title="문제 1 정답 및 해설"}
+```python
+def self_attention(x, Wq, Wk, Wv):
+    Q, K, V = x @ Wq, x @ Wk, x @ Wv
+    scores = Q @ K.transpose(-2, -1) / math.sqrt(Q.size(-1))
+    weights = torch.softmax(scores, dim=-1)
+    output = weights @ V
+    return output, weights
+
+out, weights = self_attention(x, Wq, Wk, Wv)
+assert torch.allclose(weights.sum(-1), torch.ones_like(weights.sum(-1)))
+```
+
+Softmax를 마지막 축에 적용하므로 각 query가 모든 key에 주는 가중치의 합은 1입니다. `sqrt(d_k)`로 나누면 내적값이 지나치게 커져 Softmax가 포화되는 것을 완화합니다.
+:::
+
+::: {.callout-note collapse="true" title="문제 2 정답 및 해설"}
+```python
+for nhead in [1, 4, 8]:
+    assert d_model % nhead == 0
+    model = TransformerRegressor(d_model=d_model, nhead=nhead)
+    # 같은 조건으로 학습 후 test_mse 저장
+```
+
+헤드가 많으면 서로 다른 관계를 병렬로 볼 수 있지만 헤드당 차원은 `d_model / nhead`로 작아집니다. 따라서 헤드 수가 많다고 항상 성능이 좋아지는 것은 아닙니다.
+:::
+
+::: {.callout-note collapse="true" title="문제 3 정답 및 해설"}
+```python
+def forward(self, x, use_pe=True):
+    h = self.input_proj(x)
+    if use_pe:
+        h = h + self.pe[:, :h.size(1)]
+    h = self.encoder(h)
+    return self.head(h[:, -1])
+```
+
+Self-attention만으로는 토큰의 순서를 구분하지 못합니다. 위치 인코딩을 제거하면 값은 보더라도 어느 시점의 값인지 알기 어려워 시계열 예측 성능이 저하될 수 있습니다.
+:::
+
+::: {.callout-note collapse="true" title="문제 4 정답 및 해설"}
+```python
+start = time.perf_counter()
+# 동일 데이터·epoch로 model 학습
+elapsed = time.perf_counter() - start
+```
+
+LSTM은 시간축을 순차 처리해 긴 시퀀스에서 느리지만 데이터가 작을 때 안정적일 수 있습니다. Transformer는 병렬화와 장거리 직접 연결에 강하지만 메모리 사용량이 크고 위치 정보가 별도로 필요합니다. 파라미터 수, MSE, 학습 시간을 함께 비교합니다.
+:::
+

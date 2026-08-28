@@ -1,0 +1,324 @@
+# 4주차 연습문제 {#sec-ch4-quiz}
+
+다음 20문항은 4지선다입니다. 각 문항에서 정답이라고 생각하는 **선택지를 클릭**해 표시한 뒤, 맨 아래 **정답확인** 버튼을 누르면 채점 결과(정답·오답)와 해설, 점수가 나타납니다.
+
+
+::: {.quiz-item}
+**1.** 트랜스포머가 순환 신경망 대비 갖는 핵심 장점은?
+
+① 파라미터가 항상 적다
+
+[② 전체 시퀀스 병렬 처리와 직접 연결]{.quiz-correct}
+
+③ 라벨 불필요
+
+④ 위치 정보 자동 내장
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**2.** 어텐션을 순환 신경망 위에 처음 도입해 정렬을 학습한 연구는?
+
+① Vaswani 2017
+
+[② Bahdanau 2015]{.quiz-correct}
+
+③ Hochreiter 1997
+
+④ He 2016
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**3.** 셀프 어텐션에서 쿼리의 역할은?
+
+① 전달할 내용
+
+② 각 위치의 색인
+
+[③ 현재 위치가 던지는 질문]{.quiz-correct}
+
+④ 위치 정보
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ③.
+:::
+:::
+
+::: {.quiz-item}
+**4.** 스케일드 닷-프로덕트 어텐션에서 $\sqrt{d_k}$로 나누는 이유는?
+
+① 확률 정규화
+
+[② 큰 내적으로 인한 소프트맥스 포화 방지]{.quiz-correct}
+
+③ 파라미터 절약
+
+④ 마스킹
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**5.** 어텐션 가중치 $\alpha_{ij}$의 한 행의 합은?
+
+① 0
+
+[② 1]{.quiz-correct}
+
+③ d_k
+
+④ T
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②. 소프트맥스 결과이므로 1입니다.
+:::
+:::
+
+::: {.quiz-item}
+**6.** $QK^\top$ 행렬의 크기는? (시퀀스 길이 T)
+
+① (T, d_k)
+
+② (d_k, d_k)
+
+[③ (T, T)]{.quiz-correct}
+
+④ (1, T)
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ③.
+:::
+:::
+
+::: {.quiz-item}
+**7.** 멀티 헤드 어텐션을 쓰는 이유는?
+
+① 계산 절약
+
+[② 서로 다른 부분 공간의 다양한 관계 병렬 학습]{.quiz-correct}
+
+③ 위치 인코딩 대체
+
+④ 마스킹 강화
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**8.** $d_{\text{model}}=64$, 헤드 8개일 때 각 헤드의 차원 $d_k$는?
+
+[① 8]{.quiz-correct}
+
+② 16
+
+③ 32
+
+④ 64
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ①. 64/8 = 8.
+:::
+:::
+
+::: {.quiz-item}
+**9.** 멀티 헤드 출력을 이어 붙인 뒤 거치는 것은?
+
+① 소프트맥스
+
+[② 선형 투영 $W^O$]{.quiz-correct}
+
+③ 드롭아웃만
+
+④ 위치 인코딩
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**10.** 셀프 어텐션이 순서 정보를 스스로 담지 못하는 성질은?
+
+① 인과성
+
+[② 순서 불변]{.quiz-correct}
+
+③ 정상성
+
+④ 볼록성
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**11.** 사인·코사인 위치 인코딩의 값 범위는?
+
+① [0, 1]
+
+[② [-1, 1]]{.quiz-correct}
+
+③ [0, ∞)
+
+④ 정수
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**12.** 사인·코사인 위치 인코딩의 장점으로 옳은 것은?
+
+① 데이터 적응성 최고
+
+[② 학습 파라미터 없음·긴 길이 외삽 가능]{.quiz-correct}
+
+③ 구현 불가
+
+④ 순서 무시
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**13.** 학습 가능한 위치 인코딩의 단점은?
+
+① 파라미터 없음
+
+[② 학습 때 본 최대 길이 초과 시 외삽 취약]{.quiz-correct}
+
+③ 값이 무한
+
+④ 순서 무시
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**14.** 인코더의 셀프 어텐션 방향성은?
+
+① 순방향만
+
+② 역방향만
+
+[③ 양방향(전체 문맥)]{.quiz-correct}
+
+④ 없음
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ③.
+:::
+:::
+
+::: {.quiz-item}
+**15.** 디코더의 마스크드 셀프 어텐션이 강제하는 것은?
+
+① 병렬성
+
+[② 인과성(미래 차단)]{.quiz-correct}
+
+③ 정상성
+
+④ 대칭성
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**16.** 마스킹은 미래 위치의 점수를 어떤 값으로 만드는가?
+
+① 0
+
+② 1
+
+[③ $-\infty$]{.quiz-correct}
+
+④ 평균
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ③. 소프트맥스 후 가중치가 0이 됩니다.
+:::
+:::
+
+::: {.quiz-item}
+**17.** 인코더-디코더 어텐션에서 키·값의 출처는?
+
+① 디코더 출력
+
+[② 인코더 출력]{.quiz-correct}
+
+③ 위치 인코딩
+
+④ 라벨
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**18.** 긴 시계열에서 표준 셀프 어텐션의 계산 복잡도는?
+
+① $O(L)$
+
+② $O(L\log L)$
+
+[③ $O(L^2)$]{.quiz-correct}
+
+④ $O(1)$
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ③.
+:::
+:::
+
+::: {.quiz-item}
+**19.** 시계열을 추세·계절 성분으로 분해해 어텐션과 결합한 모델은?
+
+① Informer
+
+[② Autoformer]{.quiz-correct}
+
+③ PatchTST
+
+④ BERT
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
+
+::: {.quiz-item}
+**20.** 복잡한 트랜스포머가 단순 선형 모델보다 항상 낫지는 않음을 지적한 연구는?
+
+① Informer
+
+[② DLinear(Are Transformers Effective?)]{.quiz-correct}
+
+③ TFT
+
+④ RoFormer
+
+::: {.callout-note collapse="true" title="노트"}
+정답 ②.
+:::
+:::
