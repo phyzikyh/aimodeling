@@ -163,33 +163,60 @@ hr {
 .quiz-score .s-num { color: #1AB18B; }
 
 /* ==========================================================
-   좌측 사이드바(목차) — 주차별 하위 항목을 1·2·3으로 번호 매김
-   (이론/연습문제/코딩실습). 녹색 활성 강조는 사용하지 않음.
+   좌측 사이드바(목차) — 교재풍 중첩 네비 (databuilding 스타일)
+   굵은 주차 헤더 + 들여쓴 하위항목(1.이론 2.연습문제 3.코딩실습)
+   활성/호버 = '글자색'만 청록(#1AB18B), 배경·박스 없음.
    ========================================================== */
 
-/* 주차 하위 목록에서는 책의 연속 챕터 번호를 숨긴다(index의 번호는 유지) */
-#quarto-sidebar .sidebar-section.depth1 .chapter-number { display: none; }
+/* 번호는 제목에 직접 넣으므로, 책의 연속 챕터 번호는 숨긴다 */
+.chapter-number { display: none; }
 
-/* 각 주차마다 카운터를 1부터 다시 매겨 하위 제목 앞에 붙인다 */
-#quarto-sidebar .sidebar-section.depth1 { counter-reset: weekitem; }
-#quarto-sidebar .sidebar-section.depth1 > .sidebar-item .chapter-title::before {
-  counter-increment: weekitem;
-  content: counter(weekitem) ". ";
-  color: #8a97a3;
-  font-variant-numeric: tabular-nums;
+.sidebar-navigation { font-size: 0.92rem; padding-top: 0.4rem; }
+.sidebar-navigation .sidebar-item { margin: 1px 0; }
+
+/* 사이드바 링크 기본 */
+.sidebar-navigation .sidebar-item .sidebar-link {
+  color: #4a4f57;
+  border-radius: 6px;
+  padding: 3px 8px;
+  transition: background 0.12s, color 0.12s;
+}
+.sidebar-navigation .sidebar-item .sidebar-link:hover {
+  color: #1AB18B;
+  background: transparent !important;
 }
 
-/* 주차(파트) 헤더는 굵게 */
-#quarto-sidebar .sidebar-item-section > .sidebar-item-container .menu-text {
+/* 상위(주차) 섹션 헤더 — 굵고 진하게 */
+.sidebar-navigation .sidebar-item-section > .sidebar-item-container .sidebar-link,
+.sidebar-navigation .sidebar-item-section > .sidebar-item-container .menu-text,
+.sidebar-navigation > ul > .sidebar-item > .sidebar-item-container .sidebar-link {
   font-weight: 800;
   color: #16181d;
+  font-size: 0.98em;
 }
 
-/* 하위 항목: 들여쓰기 + 얇은 좌측 가이드선, 중립 색상 */
-#quarto-sidebar .sidebar-section.depth1 {
-  margin-left: 0.55rem;
+/* 하위 항목(1.이론/2.연습문제/3.코딩실습) — 들여쓰기 + 얇은 좌측 가이드선 */
+.sidebar-navigation .sidebar-section.depth1 {
   border-left: 1px solid #e8edf2;
+  margin-left: 0.55rem;
   padding-left: 0.3rem;
 }
-#quarto-sidebar .sidebar-section.depth1 .sidebar-link { color: #4a5560; }
-#quarto-sidebar .sidebar-section.depth1 .sidebar-link:hover { color: #16181d; }
+.sidebar-navigation .sidebar-section.depth1 .sidebar-link {
+  font-size: 0.9em;
+  color: #626871;
+}
+
+/* 활성 항목 — 배경/박스 없이 '글자 색'만 청록 */
+.sidebar-navigation .sidebar-link.active,
+.sidebar-navigation .sidebar-item .sidebar-link.active {
+  color: #1AB18B !important;
+  font-weight: 700;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* 펼침/접힘 화살표 색 */
+.sidebar-navigation .sidebar-item-toggle .bi { color: #9aa0a8; }
+
+/* 섹션 사이 여백(주차 구분감) */
+.sidebar-navigation > ul > li.sidebar-item-section { margin-top: 0.5rem; }
