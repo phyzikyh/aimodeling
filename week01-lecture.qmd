@@ -575,40 +575,46 @@ scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=50)
 
 ### 학습·검증·테스트 루프
 
-한 에폭은 순전파 → 손실 → 역전파 → 파라미터 갱신을 미니배치마다 반복합니다. 검증 단계에서는 기울기를 계산하지 않도록 `torch.no_grad()`와 `model.eval()`을 사용합니다. `eval()`은 드롭아웃·배치정규화 같은 계층을 평가 모드로 전환하는데, 이 예제에서는 해당 계층이 없지만 습관적으로 항상 켜고 끄는 것이 안전합니다.
+한 에폭은 순전파 → 손실 → 역전파 → 파라미터 갱신을 미니배치마다 반복하는 **학습 단계**와, 갱신 없이 성능만 재는 **검증 단계**로 이루어집니다. 검증에서는 기울기가 필요 없으므로 `torch.no_grad()`로 계산 그래프 기록을 끄고, `model.eval()`로 드롭아웃·배치정규화 같은 계층을 평가 모드로 바꿉니다(이 예제엔 그런 계층이 없지만 습관을 들이는 것이 안전합니다).
 
-```python
-def run_epoch(model, loader, criterion, optimizer=None):
-    is_train = optimizer is not None
-    model.train() if is_train else model.eval()
-    total_loss, correct, total = 0.0, 0, 0
-    with torch.set_grad_enabled(is_train):
-        for xb, yb in loader:
-            xb, yb = xb.to(device), yb.to(device)
-            logits = model(xb)                 # 순전파
-            loss = criterion(logits, yb)        # 손실
-            if is_train:
-                optimizer.zero_grad()          # 기울기 초기화
-                loss.backward()               # 역전파
-                optimizer.step()              # 파라미터 갱신
-            total_loss += loss.item() * len(xb)
-            pred = (torch.sigmoid(logits) > 0.5).float()
-            correct += (pred == yb).sum().item()
-            total += len(xb)
-    return total_loss / total, correct / total
-```
-
-이제 전체 학습을 수행합니다. 매 에폭 훈련·검증 손실과 정확도를 기록하고, **검증 정확도가 가장 높은 순간의 파라미터를 저장**해 두었다가 마지막에 테스트에 사용합니다. 이는 과적합 이전의 가장 좋은 모델을 고르는 간단한 조기 선택 전략입니다.
+아래는 두 단계를 함수로 감싸지 않고 **에폭 루프 안에 그대로 풀어 쓴** 것입니다. 매 에폭 손실·정확도를 기록하고, **검증 정확도가 가장 높은 순간의 파라미터를 저장**해 두었다가 마지막에 테스트에 사용합니다(과적합 전 최적 모델을 고르는 간단한 조기 선택).
 
 ```python
 best_val_acc, best_state = 0.0, None
 EPOCHS = 50
 
 for epoch in range(1, EPOCHS + 1):
-    tr_loss, tr_acc = run_epoch(model, train_loader, criterion, optimizer)
-    va_loss, va_acc = run_epoch(model, val_loader, criterion)
-    scheduler.step()
+    # ── 학습 단계: model.train() 후 미니배치마다 순전파→손실→역전파→갱신 ──
+    model.train()
+    tr_loss, tr_correct, tr_total = 0.0, 0, 0
+    for xb, yb in train_loader:
+        xb, yb = xb.to(device), yb.to(device)
+        logits = model(xb)                      # 순전파
+        loss = criterion(logits, yb)            # 손실
+        optimizer.zero_grad()                   # 기울기 초기화
+        loss.backward()                         # 역전파
+        optimizer.step()                        # 파라미터 갱신
+        tr_loss += loss.item() * len(xb)
+        tr_correct += ((torch.sigmoid(logits) > 0.5).float() == yb).sum().item()
+        tr_total += len(xb)
+    tr_loss, tr_acc = tr_loss / tr_total, tr_correct / tr_total
 
+    # ── 검증 단계: model.eval() + no_grad()로 갱신 없이 성능만 측정 ──
+    model.eval()
+    va_loss, va_correct, va_total = 0.0, 0, 0
+    with torch.no_grad():
+        for xb, yb in val_loader:
+            xb, yb = xb.to(device), yb.to(device)
+            logits = model(xb)
+            loss = criterion(logits, yb)
+            va_loss += loss.item() * len(xb)
+            va_correct += ((torch.sigmoid(logits) > 0.5).float() == yb).sum().item()
+            va_total += len(xb)
+    va_loss, va_acc = va_loss / va_total, va_correct / va_total
+
+    scheduler.step()                            # 학습률 갱신(에폭마다)
+
+    # 검증 정확도가 가장 높은 순간의 파라미터를 저장(조기 선택)
     if va_acc > best_val_acc:
         best_val_acc = va_acc
         best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
@@ -617,10 +623,17 @@ for epoch in range(1, EPOCHS + 1):
         print(f"[{epoch:3d}] train_loss={tr_loss:.3f} acc={tr_acc:.3f} | "
               f"val_loss={va_loss:.3f} acc={va_acc:.3f}")
 
-# 최적 파라미터 복원 후 테스트
+# ── 최적 파라미터 복원 후 테스트 ──
 model.load_state_dict(best_state)
-te_loss, te_acc = run_epoch(model, test_loader, criterion)
-print(f"테스트 정확도: {te_acc:.3f}")
+model.eval()
+te_correct, te_total = 0, 0
+with torch.no_grad():
+    for xb, yb in test_loader:
+        xb, yb = xb.to(device), yb.to(device)
+        logits = model(xb)
+        te_correct += ((torch.sigmoid(logits) > 0.5).float() == yb).sum().item()
+        te_total += len(xb)
+print(f"테스트 정확도: {te_correct / te_total:.3f}")
 ```
 
 이 코드의 골격—Dataset, DataLoader, 모델, 손실, 옵티마이저, 스케줄러, 그리고 train/val/test 루프—은 회귀든 다중 분류든, 이미지든 시계열이든 거의 그대로 재사용됩니다. 바뀌는 것은 데이터셋과 모델, 손실 함수뿐입니다. 이 [일관된 템플릿]{.key}을 손에 익히는 것이 1장의 가장 중요한 목표입니다.
@@ -628,6 +641,110 @@ print(f"테스트 정확도: {te_acc:.3f}")
 ::: {.keybox}
 **핵심.** 파이토치 학습은 언제나 **Dataset → DataLoader → 모델 → 손실 → 역전파 → optimizer.step → scheduler.step**의 반복입니다. 문제가 바뀌어도 이 뼈대는 그대로이고, 데이터셋·출력층·손실 함수만 교체하면 됩니다.
 :::
+
+### 전체 코드 한 번에 보기
+
+앞에서 파트별로 나눠 만든 코드를 하나로 합치면 다음과 같습니다. 위에서 아래로 그대로 실행하면 반달 데이터에서 MLP가 학습되고 테스트 정확도가 출력됩니다.
+
+```python
+# ── 0. 준비 ──
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import Dataset, DataLoader, random_split
+from sklearn.datasets import make_moons
+from sklearn.preprocessing import StandardScaler
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
+# ── 1. 데이터: 반달 생성 → 표준화 → 텐서 ──
+X, y = make_moons(n_samples=2000, noise=0.2, random_state=42)
+X = StandardScaler().fit_transform(X)
+X = torch.tensor(X, dtype=torch.float32)
+y = torch.tensor(y, dtype=torch.float32).unsqueeze(1)   # (N, 1)
+
+class MoonDataset(Dataset):
+    def __init__(self, X, y): self.X, self.y = X, y
+    def __len__(self): return len(self.X)
+    def __getitem__(self, i): return self.X[i], self.y[i]
+
+full = MoonDataset(X, y)
+n = len(full)
+n_train, n_val = int(0.7 * n), int(0.15 * n)
+n_test = n - n_train - n_val
+g = torch.Generator().manual_seed(0)
+train_ds, val_ds, test_ds = random_split(full, [n_train, n_val, n_test], generator=g)
+train_loader = DataLoader(train_ds, batch_size=64,  shuffle=True)
+val_loader   = DataLoader(val_ds,   batch_size=256, shuffle=False)
+test_loader  = DataLoader(test_ds,  batch_size=256, shuffle=False)
+
+# ── 2. 모델: 2 → 32 → 32 → 1(로짓) MLP ──
+class MLP(nn.Module):
+    def __init__(self, in_dim=2, hidden=32):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(in_dim, hidden), nn.ReLU(),
+            nn.Linear(hidden, hidden), nn.ReLU(),
+            nn.Linear(hidden, 1),
+        )
+    def forward(self, x): return self.net(x)
+
+model = MLP().to(device)
+
+# ── 3. 손실·옵티마이저·스케줄러 ──
+criterion = nn.BCEWithLogitsLoss()
+optimizer = optim.Adam(model.parameters(), lr=1e-2, weight_decay=1e-4)
+scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=50)
+
+# ── 4. 학습·검증·테스트 ──
+best_val_acc, best_state = 0.0, None
+EPOCHS = 50
+for epoch in range(1, EPOCHS + 1):
+    model.train()
+    tr_loss, tr_correct, tr_total = 0.0, 0, 0
+    for xb, yb in train_loader:
+        xb, yb = xb.to(device), yb.to(device)
+        logits = model(xb)
+        loss = criterion(logits, yb)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        tr_loss += loss.item() * len(xb)
+        tr_correct += ((torch.sigmoid(logits) > 0.5).float() == yb).sum().item()
+        tr_total += len(xb)
+    tr_loss, tr_acc = tr_loss / tr_total, tr_correct / tr_total
+
+    model.eval()
+    va_loss, va_correct, va_total = 0.0, 0, 0
+    with torch.no_grad():
+        for xb, yb in val_loader:
+            xb, yb = xb.to(device), yb.to(device)
+            logits = model(xb)
+            va_loss += criterion(logits, yb).item() * len(xb)
+            va_correct += ((torch.sigmoid(logits) > 0.5).float() == yb).sum().item()
+            va_total += len(xb)
+    va_loss, va_acc = va_loss / va_total, va_correct / va_total
+    scheduler.step()
+
+    if va_acc > best_val_acc:
+        best_val_acc = va_acc
+        best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+    if epoch % 10 == 0:
+        print(f"[{epoch:3d}] train_loss={tr_loss:.3f} acc={tr_acc:.3f} | "
+              f"val_loss={va_loss:.3f} acc={va_acc:.3f}")
+
+model.load_state_dict(best_state)
+model.eval()
+te_correct, te_total = 0, 0
+with torch.no_grad():
+    for xb, yb in test_loader:
+        xb, yb = xb.to(device), yb.to(device)
+        logits = model(xb)
+        te_correct += ((torch.sigmoid(logits) > 0.5).float() == yb).sum().item()
+        te_total += len(xb)
+print(f"테스트 정확도: {te_correct / te_total:.3f}")
+```
 
 ### 템플릿을 다른 문제로 확장하기
 
