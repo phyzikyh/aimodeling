@@ -1,138 +1,206 @@
 # 3. 코딩실습 {#sec-ch2-lab}
 
-## 예제 코드
+이번 실습에서는 교재 2장의 코드로 지도학습과 비지도학습, 단일 뉴런, 손실 함수, 경사하강법과 학습률의 역할을 확인합니다.
 
-MNIST 대신, 다운로드가 필요 없는 scikit-learn의 손글씨 숫자(`load_digits`, 8×8, 10클래스)로 다중 분류 MLP를 학습합니다.
+## 예제 1. 선형 분류 모델
+
+교재 `2_3.py`의 [프로그램 2-1]은 라벨이 있는 데이터를 사용해 결정 경계를 학습하는 지도학습 예제입니다.
 
 ```python
-import torch, torch.nn as nn, torch.optim as optim
-from torch.utils.data import TensorDataset, DataLoader, random_split
-from sklearn.datasets import load_digits
-from sklearn.preprocessing import StandardScaler
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import matplotlib.pyplot as plt
+import numpy as np
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
 torch.manual_seed(0)
+X = torch.randn(100, 2)
+y = (X[:, 0] + X[:, 1] > 0).float()
+model = nn.Sequential(nn.Linear(2, 1), nn.Sigmoid())
+criterion = nn.BCELoss()
+optimizer = optim.SGD(model.parameters(), lr=0.1)
+loss_history = []
 
-data = load_digits()
-X = StandardScaler().fit_transform(data.data)     # (1797, 64)
-X = torch.tensor(X, dtype=torch.float32)
-y = torch.tensor(data.target, dtype=torch.long)   # 0..9
+for epoch in range(50):
+    optimizer.zero_grad()
+    output = model(X).squeeze()
+    loss = criterion(output, y)
+    loss.backward()
+    optimizer.step()
+    loss_history.append(loss.item())
 
-ds = TensorDataset(X, y)
-n = len(ds); n_tr, n_va = int(0.7*n), int(0.15*n)
-tr, va, te = random_split(ds, [n_tr, n_va, n-n_tr-n_va],
-                          generator=torch.Generator().manual_seed(0))
-tl = DataLoader(tr, batch_size=64, shuffle=True)
-vl, el = DataLoader(va, batch_size=256), DataLoader(te, batch_size=256)
+with torch.no_grad():
+    prediction = (model(X).squeeze() > 0.5).long()
+    accuracy = (prediction == y.long()).float().mean()
+print("accuracy:", accuracy.item())
+plt.plot(loss_history)
+plt.xlabel("Epoch"); plt.ylabel("Loss")
+plt.title("Training Loss"); plt.grid(True); plt.show()
+```
 
-def build(dropout=0.0):
-    return nn.Sequential(
-        nn.Linear(64,128), nn.ReLU(), nn.Dropout(dropout),
-        nn.Linear(128,64), nn.ReLU(), nn.Dropout(dropout),
-        nn.Linear(64,10)).to(device)
+## 예제 2. K-means 군집화
 
-def run(model, loader, crit, opt=None):
-    train = opt is not None
-    model.train() if train else model.eval()
-    L=C=Nn=0
-    with torch.set_grad_enabled(train):
-        for xb, yb in loader:
-            xb, yb = xb.to(device), yb.to(device)
-            out = model(xb); loss = crit(out, yb)
-            if train: opt.zero_grad(); loss.backward(); opt.step()
-            L += loss.item()*len(xb); C += (out.argmax(1)==yb).sum().item(); Nn += len(xb)
-    return L/Nn, C/Nn
+교재 [프로그램 2-2]는 라벨 없이 데이터 사이의 거리를 이용하는 비지도학습 예제입니다.
 
-model = build(dropout=0.2)
-crit = nn.CrossEntropyLoss()
-opt  = optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-4)
-for ep in range(1, 31):
-    run(model, tl, crit, opt)
-print("test acc:", round(run(model, el, crit)[1], 3))
+```python
+torch.manual_seed(0)
+X_cluster = torch.cat([
+    torch.randn(100, 2) + torch.tensor([2.0, 0.0]),
+    torch.randn(100, 2) + torch.tensor([-2.0, 0.0])
+], dim=0)
+centroids = X_cluster[torch.randperm(X_cluster.size(0))[:2]]
+
+for step in range(20):
+    distances = torch.cdist(X_cluster, centroids)
+    labels = distances.argmin(dim=1)
+    new_centroids = torch.stack([
+        X_cluster[labels == i].mean(dim=0) for i in range(2)
+    ])
+    if torch.allclose(centroids, new_centroids):
+        break
+    centroids = new_centroids
+
+print("iterations:", step + 1)
+print("centroids:\n", centroids)
+plt.scatter(X_cluster[:, 0], X_cluster[:, 1], c=labels, cmap="viridis")
+plt.scatter(centroids[:, 0], centroids[:, 1], c="red", s=200, marker="X")
+plt.title("K-means Clustering Result"); plt.show()
+```
+
+## 예제 3. 단일 뉴런과 경사하강법
+
+교재 `2_7.py`의 [프로그램 2-3]처럼 $\hat y=wx+b$인 뉴런 하나를 학습합니다.
+
+```python
+x = torch.tensor([2.0]); y_true = torch.tensor([4.0])
+w = torch.tensor([0.1], requires_grad=True)
+b = torch.tensor([0.0], requires_grad=True)
+optimizer = optim.SGD([w, b], lr=0.1)
+criterion = nn.MSELoss()
+
+for step in range(10):
+    optimizer.zero_grad()
+    y_pred = w * x + b
+    loss = criterion(y_pred, y_true)
+    loss.backward()
+    print(f"step {step:2d} | w={w.item():.4f} | b={b.item():.4f} "
+          f"| grad_w={w.grad.item():.4f} | loss={loss.item():.4f}")
+    optimizer.step()
+```
+
+## 예제 4. 학습률과 손실 표면
+
+교재 [프로그램 2-4], [프로그램 2-5]로 학습률별 파라미터 이동과 손실 함수의 모양을 관찰합니다.
+
+```python
+def run_lr(rate, steps=8):
+    w = torch.tensor([0.1], requires_grad=True)
+    optimizer = optim.SGD([w], lr=rate)
+    history = []
+    for _ in range(steps):
+        optimizer.zero_grad()
+        loss = (w * 2.0 - 4.0).pow(2).mean()
+        loss.backward(); optimizer.step()
+        history.append((w.item(), loss.item()))
+    return history
+
+for rate in [0.01, 0.1, 0.5]:
+    print(f"lr={rate}:", run_lr(rate))
+
+ws = np.linspace(-2, 4, 200)
+plt.plot(ws, (2 * ws - 4) ** 2)
+plt.xlabel("w"); plt.ylabel("Loss")
+plt.title("Loss Surface for w"); plt.grid(True); plt.show()
 ```
 
 ## 실습문제
 
-**문제 1. 옵티마이저 비교.** `SGD`(모멘텀 0.9), `Adam`, `AdamW`(`optim.AdamW`) 세 가지로 각각 학습해 테스트 정확도와 학습 곡선을 비교하세요. 결과를 표로 정리합니다.
+다음 5개 문제의 `TODO`를 완성하고 동일한 난수 시드로 조건을 비교하세요.
+
+### 문제 1. 선형 분류 정확도 계산
+
+예제 1에서 임계값을 0.3, 0.5, 0.7로 바꾸어 정확도를 표로 정리하고 예측 클래스에 미치는 영향을 설명하세요.
 
 ```python
-def make_opt(name, params):
-    # TODO: name이 "sgd"면 SGD(lr=0.05, momentum=0.9),
-    #       "adam"이면 Adam(lr=1e-3), "adamw"면 AdamW(lr=1e-3, weight_decay=1e-2)
-    ...
+with torch.no_grad():
+    probability = model(X).squeeze()
+    for threshold in [0.3, 0.5, 0.7]:
+        prediction = # TODO
+        accuracy = # TODO
+        print(threshold, accuracy.item())
 ```
 
-**문제 2. 드롭아웃 효과.** `dropout`을 0.0, 0.2, 0.5로 바꿔 훈련·검증 정확도 격차(과적합 정도)를 비교하고, 어떤 값이 일반화에 가장 좋은지 설명하세요.
+### 문제 2. K-means의 군집 수 변경
 
-**문제 3. K-겹 교차검증.** 훈련+검증 데이터를 합쳐 5-겹 교차검증을 구현하고, 5개 폴드의 검증 정확도 평균과 표준편차를 출력하세요. (힌트: `sklearn.model_selection.KFold`로 인덱스를 나눠 `Subset` 사용)
+세 군집 데이터에 `k=3`인 K-means를 구현하고 최종 중심점, 반복 횟수와 그래프를 제시하세요.
 
-**문제 4. 초기화 비교.** 모델 가중치를 (a) 기본, (b) He 초기화(`kaiming_normal_`)로 명시 초기화한 두 경우의 초기 몇 에폭 손실 감소 속도를 비교하세요.
-
-**제출물**: 완성된 `.py`와 문제 1~4의 결과 표·그래프 및 3~5문장 분석.
-
-## 교수용 정답 및 해설 {.unnumbered}
-
-::: {.callout-note collapse="true" title="문제 1 정답 및 해설"}
 ```python
-def make_optimizer(name, model):
-    if name == "sgd":
-        return optim.SGD(model.parameters(), lr=0.05, momentum=0.9)
-    if name == "adam":
-        return optim.Adam(model.parameters(), lr=1e-3)
-    if name == "adamw":
-        return optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
-    raise ValueError(name)
+torch.manual_seed(1)
+X3 = torch.cat([
+    torch.randn(80, 2) + torch.tensor([-3., 0.]),
+    torch.randn(80, 2) + torch.tensor([0., 3.]),
+    torch.randn(80, 2) + torch.tensor([3., 0.])
+])
+centroids = # TODO: 데이터에서 중심점 3개 선택
+for step in range(30):
+    distances = # TODO
+    labels = # TODO
+    new_centroids = # TODO: 군집별 평균
+    # TODO: 수렴 검사와 중심점 갱신
 ```
 
-각 실험은 모델을 새로 만들고 같은 초기 가중치와 데이터 분할을 사용해야 합니다. Adam 계열은 초반 수렴이 빠른 경우가 많고, SGD는 학습률 조정에 민감하지만 좋은 일반화 성능을 낼 수 있습니다. 결과는 단일 실행보다 여러 seed의 평균과 표준편차로 비교합니다.
-:::
+### 문제 3. 학습률 비교 실험
 
-::: {.callout-note collapse="true" title="문제 2 정답 및 해설"}
+학습률 `0.001`, `0.01`, `0.1`, `0.5`를 20스텝 동안 비교해 손실 곡선을 한 그래프에 그리고 가장 안정적인 값을 고르세요.
+
 ```python
-class MLP(nn.Module):
-    def __init__(self, dropout=0.0):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(in_dim, 128), nn.ReLU(), nn.Dropout(dropout),
-            nn.Linear(128, 64), nn.ReLU(), nn.Dropout(dropout),
-            nn.Linear(64, out_dim)
-        )
+for rate in [0.001, 0.01, 0.1, 0.5]:
+    history = # TODO: run_lr 호출
+    losses = # TODO: 손실만 추출
+    # TODO: 곡선 추가
+# TODO: 축 이름, 범례, 격자 추가
+plt.show()
 ```
 
-Dropout이 0이면 훈련 성능은 높지만 검증 성능과의 격차가 커질 수 있습니다. 너무 큰 0.5는 정보 손실로 과소적합될 수 있습니다. 가장 좋은 값은 검증 정확도가 높고 훈련-검증 격차가 작은 값으로 선택합니다.
-:::
+### 문제 4. 수동 경사하강법 구현
 
-::: {.callout-note collapse="true" title="문제 3 정답 및 해설"}
+옵티마이저 없이 $L=(wx-y)^2$를 최소화하세요. `torch.no_grad()` 안에서 $w \leftarrow w-\eta\nabla_w L$을 직접 구현하고 매 스텝 기울기를 초기화합니다.
+
 ```python
-from sklearn.model_selection import KFold
-from torch.utils.data import Subset
-
-kfold = KFold(n_splits=5, shuffle=True, random_state=42)
-scores = []
-for train_idx, val_idx in kfold.split(range(len(dataset))):
-    train_ds = Subset(dataset, train_idx)
-    val_ds = Subset(dataset, val_idx)
-    model = MLP().to(device)          # 폴드마다 새 모델
-    # train_loader, val_loader 생성 후 학습·평가
-    scores.append(val_acc)
-
-print(np.mean(scores), np.std(scores))
+x = torch.tensor(2.0); y_true = torch.tensor(4.0)
+w = torch.tensor(0.1, requires_grad=True); lr = 0.1
+for step in range(10):
+    loss = # TODO
+    # TODO: 역전파
+    with torch.no_grad():
+        # TODO: w 갱신
+    # TODO: 기울기를 0으로 초기화
+    print(step, w.item(), loss.item())
 ```
 
-폴드마다 모델과 옵티마이저를 새로 초기화해야 이전 폴드의 학습 정보가 누출되지 않습니다.
-:::
+### 문제 5. 비선형 데이터 분류
 
-::: {.callout-note collapse="true" title="문제 4 정답 및 해설"}
+XOR 데이터에 (a) 선형 모델과 (b) `Linear(2, 8) → ReLU → Linear(8, 1)` 모델을 각각 1,000회 학습해 정확도를 비교하세요.
+
 ```python
-def init_he(module):
-    if isinstance(module, nn.Linear):
-        nn.init.kaiming_normal_(module.weight, nonlinearity="relu")
-        nn.init.zeros_(module.bias)
+X_xor = torch.tensor([[0., 0.], [0., 1.], [1., 0.], [1., 1.]])
+y_xor = torch.tensor([[0.], [1.], [1.], [0.]])
+linear_model = nn.Linear(2, 1)
+nonlinear_model = nn.Sequential(
+    # TODO: 2 → 8 → 1 구조와 ReLU
+)
 
-model_he = MLP()
-model_he.apply(init_he)
+def train_xor(model, steps=1000):
+    optimizer = optim.Adam(model.parameters(), lr=0.05)
+    criterion = nn.BCEWithLogitsLoss()
+    for _ in range(steps):
+        # TODO: 학습 단계 작성
+        pass
+    with torch.no_grad():
+        pred = (torch.sigmoid(model(X_xor)) >= 0.5).float()
+        return (pred == y_xor).float().mean().item()
 ```
 
-He 초기화는 ReLU를 통과한 뒤에도 활성값과 기울기의 분산이 지나치게 줄거나 커지지 않도록 설계되었습니다. 같은 초기 seed에서 초기 5~10 epoch의 손실 곡선을 비교합니다.
-:::
+**제출물**: 완성한 노트북 또는 `.py` 파일, 문제 1의 표, 문제 2·3의 그래프, 문제 5의 정확도 비교와 3문장 이내 해석.
 
+> 예제 출처: 김태훈, 『IT CookBook, 파이토치로 배우는 현대 인공지능』, 한빛아카데미(2026), 제공 코드 `2_3.py`, `2_7.py`를 강의 흐름에 맞게 발췌·재구성.
