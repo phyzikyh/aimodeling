@@ -255,36 +255,38 @@ $$
 $$
 
 ::: {.eqnote}
-- $x_i$: 입력, $\;W^{(1)},b^{(1)}$: 은닉층 가중치·편향, $\;v_j$: 은닉층 로짓, $\;h_j=\varphi(v_j)$: 은닉층 출력
-- $W^{(2)},b^{(2)}$: 출력층 가중치·편향, $\;y_k$: 출력층 로짓, $\;o_k=\varphi(y_k)$: 출력, $\;d_k$: 목표값
-- 위첨자 $(1),(2)$는 층 번호, 아래첨자 $kj$는 "$k$번 뉴런이 이전 층 $j$번에서 받는" 가중치를 뜻합니다.
+- $x_i$: 입력, $\;z^{(1)}_j$: 은닉층 **로짓**(활성화 전 가중합), $\;h_j=\varphi(z^{(1)}_j)$: 은닉층 출력
+- $z^{(2)}_k$: 출력층 로짓, $\;o_k=\varphi(z^{(2)}_k)$: 최종 출력, $\;d_k$: 목표값
+- $W^{(1)},W^{(2)},b^{(1)},b^{(2)}$: 층별 가중치·편향. 위첨자 $(1),(2)$는 층 번호, 아래첨자 $kj$는 "$k$번 뉴런이 이전 층 $j$번에서 받는" 가중치를 뜻합니다.
 :::
 
 ### 순방향 전파
 
-입력에서 출력까지 층을 차례로 통과시킵니다. 은닉층은
+입력에서 출력까지 층을 차례로 통과시킵니다. 은닉층은 먼저 가중합인 **로짓** $z^{(1)}$을 만들고, 여기에 활성화 함수를 적용해 출력 $h$를 냅니다.
 
 $$
-\begin{pmatrix} v_1 \\ v_2 \end{pmatrix}
+\begin{pmatrix} z^{(1)}_1 \\ z^{(1)}_2 \end{pmatrix}
 =\begin{pmatrix} w^{(1)}_{11} & w^{(1)}_{12} \\ w^{(1)}_{21} & w^{(1)}_{22} \end{pmatrix}
 \begin{pmatrix} x_1 \\ x_2 \end{pmatrix}
 +\begin{pmatrix} b^{(1)}_1 \\ b^{(1)}_2 \end{pmatrix},
 \qquad
 \begin{pmatrix} h_1 \\ h_2 \end{pmatrix}
-=\begin{pmatrix} \varphi(v_1) \\ \varphi(v_2) \end{pmatrix},
+=\begin{pmatrix} \varphi(z^{(1)}_1) \\ \varphi(z^{(1)}_2) \end{pmatrix}.
 $$
 
-출력층은 같은 방식으로
+출력층도 같은 방식으로 로짓 $z^{(2)}$를 거쳐 최종 출력 $o$를 냅니다.
 
 $$
-\begin{pmatrix} y_1 \\ y_2 \end{pmatrix}
+\begin{pmatrix} z^{(2)}_1 \\ z^{(2)}_2 \end{pmatrix}
 =\begin{pmatrix} w^{(2)}_{11} & w^{(2)}_{12} \\ w^{(2)}_{21} & w^{(2)}_{22} \end{pmatrix}
 \begin{pmatrix} h_1 \\ h_2 \end{pmatrix}
 +\begin{pmatrix} b^{(2)}_1 \\ b^{(2)}_2 \end{pmatrix},
 \qquad
 \begin{pmatrix} o_1 \\ o_2 \end{pmatrix}
-=\begin{pmatrix} \varphi(y_1) \\ \varphi(y_2) \end{pmatrix}.
+=\begin{pmatrix} \varphi(z^{(2)}_1) \\ \varphi(z^{(2)}_2) \end{pmatrix}.
 $$
+
+**로짓(logit)**은 활성화 함수를 거치기 직전의 가중합을 가리키는 말로, 뒤의 역전파에서 미분의 중간 다리 역할을 합니다.
 
 전체를 한 줄로 쓰면 출력은 두 층의 합성입니다.
 
@@ -300,91 +302,104 @@ $$
 c=c_1+c_2=\tfrac12(d_1-o_1)^2+\tfrac12(d_2-o_2)^2.
 $$
 
-### 출력층 가중치 업데이트 — 일반화 델타 규칙
+### 손실을 줄이려면 무엇이 필요한가
+
+학습의 목표는 손실 $c$를 줄이는 것이고, 그러려면 각 가중치를 손실이 줄어드는 방향으로 조금씩 옮겨야 합니다. 이것이 **경사하강법**입니다(학습률 $\eta$).
+
+$$
+w \leftarrow w-\eta\,\frac{\partial c}{\partial w}.
+$$
+
+그러므로 할 일은 딱 하나, **각 가중치에 대한 손실의 기울기 $\partial c/\partial w$를 구하는 것**입니다. 이를 연쇄법칙으로 차근차근 구해 보면, 뒤에서 델타 규칙이 자연스럽게 따라 나옵니다.
+
+### 출력층 기울기: 연쇄법칙
 
 ::: {.figbody}
-![](figs/ch2_bp_output.png){width=78% fig-alt="출력층 델타를 이용한 역전파"}
+![](figs/ch2_bp_output.png){width=78% fig-alt="출력층에서 연쇄법칙으로 기울기를 구하고 델타로 묶는다"}
 :::
 ::: {.figcap}
-**그림 2.4** 출력층 가중치 업데이트. 각 출력 뉴런의 오차 $e_k=d_k-o_k$에 활성화 도함수를 곱해 **델타** $\delta_k$를 만들고, 이를 은닉층 출력 $h_j$와 곱해 가중치를 갱신합니다.
+**그림 2.4** 출력층 가중치의 기울기. 연쇄법칙으로 구한 기울기에서 반복되는 항을 **델타** $\delta_k$로 묶으면, 갱신이 "델타 × 은닉 출력 $h_j$"라는 단순한 형태가 됩니다.
 :::
 
-출력 오차를 $e_k=d_k-o_k$로 둡니다. 손실을 미분할 때 반복되는 항을 **델타**로 묶는데, 형식적으로는 로짓 $y_k$에 대한 손실 기울기의 음수 $\delta_k\equiv-\partial c/\partial y_k$로 정의합니다. 시그모이드 출력에서는 델타가 다음처럼 깔끔하게 정리됩니다.
-
-$$
-\delta_k=\varphi'(y_k)\,e_k=o_k(1-o_k)(d_k-o_k).
-$$
-
-그러면 가중치 갱신은 "델타 × 그 가중치로 들어온 입력"이라는 단순한 형태가 됩니다(학습률 $\eta$).
-
-$$
-\Delta w^{(2)}_{kj}=\eta\,\delta_k\,h_j,\qquad
-w^{(2)}_{kj}\leftarrow w^{(2)}_{kj}+\Delta w^{(2)}_{kj}.
-$$
-
-편향은 입력이 $1$인 특수한 가중치이므로 $\Delta b^{(2)}_k=\eta\,\delta_k$로 갱신합니다. 이렇게 델타에 앞으로 보냈던 값을 곱하는 규칙을 [일반화 델타 규칙(generalized delta rule)]{.imp}이라 부릅니다.
-
-### 은닉층 가중치 업데이트 — 오차의 역전파
-
-::: {.figbody}
-![](figs/ch2_bp_hidden.png){width=78% fig-alt="은닉층으로 오차를 역전파"}
-:::
-::: {.figcap}
-**그림 2.5** 은닉층 가중치 업데이트. 은닉층은 정답이 없으므로, 출력층에서 구한 $\delta_k$를 가중치 $w^{(2)}$를 따라 거꾸로 보내 은닉층의 오차 $e^{(1)}_j$를 만든 뒤, 같은 델타 규칙을 한 번 더 적용합니다.
-:::
-
-은닉 뉴런에는 목표값이 직접 주어지지 않습니다. 대신 **출력층의 델타를 가중치를 따라 거꾸로 전달**해 은닉층의 오차를 만듭니다. 이것이 "역전파"라는 이름의 핵심입니다.
-
-$$
-e^{(1)}_j=\sum_{k} w^{(2)}_{kj}\,\delta_k,\qquad
-\delta^{(1)}_j=\varphi'(v_j)\,e^{(1)}_j=h_j(1-h_j)\,e^{(1)}_j.
-$$
-
-은닉층 델타를 얻으면 입력층 가중치도 똑같은 규칙으로 갱신합니다.
-
-$$
-\Delta w^{(1)}_{ji}=\eta\,\delta^{(1)}_j\,x_i,\qquad
-w^{(1)}_{ji}\leftarrow w^{(1)}_{ji}+\Delta w^{(1)}_{ji}.
-$$
-
-편향도 입력이 항상 $1$인 연결로 보면 같은 규칙이 적용되어, 두 층 모두 $\Delta b^{(2)}_k=\eta\,\delta_k$, $\Delta b^{(1)}_j=\eta\,\delta^{(1)}_j$로 갱신합니다. 층이 더 깊어져도 방법은 같습니다. **앞 층의 델타로 그 앞 층의 델타를 만들며 오차를 출력에서 입력 쪽으로 계속 밀어 보내면** 됩니다.
-
-### 연쇄법칙으로 다시 보기
-
-일반화 델타 규칙은 사실 **손실을 가중치로 미분한 연쇄법칙**을 정리한 것입니다. 가중치 $w^{(2)}_{11}$ 하나를 따라가 보면, 손실은 $o_1$을 거쳐 $y_1$을 거쳐 이 가중치에 의존합니다.
+출력층 가중치 $w^{(2)}_{11}$ 하나가 손실에 영향을 주는 경로를 따라가 봅니다. 이 가중치는 먼저 출력 로짓 $z^{(2)}_1=\sum_j w^{(2)}_{1j}h_j+b^{(2)}_1$에 들어가고, 그 로짓이 출력 $o_1=\varphi(z^{(2)}_1)$을, 출력이 손실 $c$를 만듭니다. 연쇄법칙은 이 경로의 미분을 곱으로 잇습니다.
 
 $$
 \frac{\partial c}{\partial w^{(2)}_{11}}
-=\frac{\partial c}{\partial o_1}\cdot
- \frac{\partial o_1}{\partial y_1}\cdot
- \frac{\partial y_1}{\partial w^{(2)}_{11}}. \qquad\text{(연쇄법칙)}
+=\underbrace{\frac{\partial c}{\partial o_1}}_{①}\cdot
+ \underbrace{\frac{\partial o_1}{\partial z^{(2)}_1}}_{②}\cdot
+ \underbrace{\frac{\partial z^{(2)}_1}{\partial w^{(2)}_{11}}}_{③}.
 $$
 
-세 항을 각각 구하면,
+세 항을 각각 구합니다. ①은 손실 $c=\tfrac12\sum_k(d_k-o_k)^2$을 $o_1$로 미분한 것, ②는 시그모이드의 도함수 $\varphi'=\varphi(1-\varphi)$(여기서 $o_1=\varphi(z^{(2)}_1)$), ③은 로짓이 가중합이므로 $w^{(2)}_{11}$ 앞의 계수인 $h_1$입니다.
 
 $$
-\text{1)}\;\frac{\partial c}{\partial o_1}=-(d_1-o_1),\qquad
-\text{2)}\;\frac{\partial o_1}{\partial y_1}=\varphi(y_1)\bigl(1-\varphi(y_1)\bigr),\qquad
-\text{3)}\;\frac{\partial y_1}{\partial w^{(2)}_{11}}=h_1,
+①\;\frac{\partial c}{\partial o_1}=-(d_1-o_1),\qquad
+②\;\frac{\partial o_1}{\partial z^{(2)}_1}=o_1(1-o_1),\qquad
+③\;\frac{\partial z^{(2)}_1}{\partial w^{(2)}_{11}}=h_1.
 $$
 
-이들을 곱하면 앞서 정의한 델타가 그대로 나타납니다.
+셋을 곱하면 기울기가 나옵니다.
 
 $$
-\frac{\partial c}{\partial w^{(2)}_{11}}
-=-(d_1-o_1)\,\varphi(y_1)\bigl(1-\varphi(y_1)\bigr)\,h_1
-=-\,\delta_1 h_1.
+\frac{\partial c}{\partial w^{(2)}_{11}}=-(d_1-o_1)\,o_1(1-o_1)\,h_1.
 $$
 
-이를 경사하강법 $w\leftarrow w-\eta\,\partial c/\partial w$에 넣으면 $w^{(2)}_{11}\leftarrow w^{(2)}_{11}+\eta\,\delta_1 h_1$이 되어, **앞의 델타 규칙과 정확히 같습니다**. 즉 일반화 델타 규칙은 이 손실에 대한 경사하강 그 자체이며, 파라미터를 갱신하는 부분이 바로 **옵티마이저**입니다.
+여기서 마지막 $h_1$(가중치로 들어온 입력)을 뺀 나머지 $-(d_1-o_1)o_1(1-o_1)$은 출력 뉴런 1에만 딸린 값입니다. 이 반복되는 항을 [델타 $\delta_1$]{.imp}로 묶습니다. 일반적으로 델타는 **로짓에 대한 손실 기울기의 음수**로 정의합니다.
+
+$$
+\delta_k\equiv -\frac{\partial c}{\partial z^{(2)}_k}=(d_k-o_k)\,o_k(1-o_k).
+$$
+
+그러면 기울기와 갱신식이 아주 단순해집니다 — **델타 × 그 가중치로 들어온 입력**.
+
+$$
+\frac{\partial c}{\partial w^{(2)}_{kj}}=-\delta_k\,h_j
+\;\;\Longrightarrow\;\;
+w^{(2)}_{kj}\leftarrow w^{(2)}_{kj}+\eta\,\delta_k h_j,\qquad
+b^{(2)}_k\leftarrow b^{(2)}_k+\eta\,\delta_k.
+$$
+
+편향은 입력이 항상 $1$인 연결이라 델타만 곱해집니다. 이렇게 델타로 정리된 갱신 규칙을 [일반화 델타 규칙(generalized delta rule)]{.imp}이라 부릅니다.
+
+### 은닉층 기울기: 오차를 거꾸로 전달
+
+::: {.figbody}
+![](figs/ch2_bp_hidden.png){width=78% fig-alt="출력층 델타를 가중치를 따라 거꾸로 보내 은닉층 델타를 만든다"}
+:::
+::: {.figcap}
+**그림 2.5** 은닉층 가중치의 기울기. 은닉 뉴런은 여러 출력에 영향을 주므로, 출력층 델타 $\delta_k$를 가중치 $w^{(2)}_{kj}$를 따라 거꾸로 보내 합한 뒤 같은 방식으로 은닉층 델타 $\delta^{(1)}_j$를 만듭니다.
+:::
+
+은닉층 가중치 $w^{(1)}_{ji}$도 같은 방법으로 구합니다. 다만 은닉 뉴런의 출력 $h_j$는 **모든 출력 뉴런**에 영향을 주므로 경로가 여러 갈래로 갈라지고, 연쇄법칙에서 이는 출력들에 대한 **합**으로 나타납니다.
+
+$$
+\frac{\partial c}{\partial h_j}
+=\sum_k \frac{\partial c}{\partial z^{(2)}_k}\,\frac{\partial z^{(2)}_k}{\partial h_j}
+=\sum_k(-\delta_k)\,w^{(2)}_{kj}
+=-\sum_k w^{(2)}_{kj}\,\delta_k.
+$$
+
+즉 **출력층에서 구한 델타 $\delta_k$를, 둘을 잇는 가중치 $w^{(2)}_{kj}$를 따라 거꾸로 보내** 은닉 뉴런의 오차를 만드는 것입니다. 이것이 "역전파(backpropagation)"라는 이름의 핵심입니다. 나머지는 출력층과 똑같습니다. 은닉 로짓 $z^{(1)}_j$에 대한 델타를 정의하고($h_j=\varphi(z^{(1)}_j)$이므로 $\varphi'=h_j(1-h_j)$),
+
+$$
+\delta^{(1)}_j\equiv -\frac{\partial c}{\partial z^{(1)}_j}
+= h_j(1-h_j)\sum_k w^{(2)}_{kj}\,\delta_k,
+$$
+
+델타 × 입력으로 갱신합니다.
+
+$$
+w^{(1)}_{ji}\leftarrow w^{(1)}_{ji}+\eta\,\delta^{(1)}_j\,x_i,\qquad
+b^{(1)}_j\leftarrow b^{(1)}_j+\eta\,\delta^{(1)}_j.
+$$
 
 ::: {.keybox}
-역전파는 **연쇄법칙을 출력에서 입력 방향으로 적용**해 모든 가중치의 기울기를 한 번에 구하는 절차입니다. 각 층에서 델타 $\delta$를 뒤로 전달하기만 하면 되고, 옵티마이저는 이 기울기로 파라미터를 갱신합니다. 자동미분은 이 과정을 자동화할 뿐, 원리는 아래 NumPy 구현과 완전히 같습니다.
+역전파는 **연쇄법칙을 출력에서 입력 방향으로 적용**해 모든 가중치의 기울기를 한 번에 구하는 절차입니다. 핵심은 각 뉴런의 **델타**(로짓에 대한 손실 기울기)를 뒤로 전달하는 것뿐이고, 갱신은 어디서나 "델타 × 입력" 꼴입니다. 옵티마이저는 이 기울기로 파라미터를 갱신하며, 자동미분은 이 과정을 자동화합니다.
 :::
 
 ### 여러 층으로 일반화
 
-지금까지의 유도는 층 수와 무관하게 그대로 확장됩니다. $l$번째 층의 로짓과 활성값을 $z^{(l)}_j=\sum_i w^{(l)}_{ji}\,a^{(l-1)}_i+b^{(l)}_j$, $a^{(l)}_j=\varphi(z^{(l)}_j)$로 쓰면(입력은 $a^{(0)}_i=x_i$, 마지막 층은 $L$), 앞 절의 $v,y$가 로짓 $z$에, $h,o$가 활성값 $a$에 해당합니다. 델타는 다음 **재귀식**을 따릅니다.
+지금까지의 유도는 층 수와 무관하게 그대로 확장됩니다. $l$번째 층의 로짓과 활성값을 $z^{(l)}_j=\sum_i w^{(l)}_{ji}\,a^{(l-1)}_i+b^{(l)}_j$, $a^{(l)}_j=\varphi(z^{(l)}_j)$로 쓰면(입력은 $a^{(0)}_i=x_i$, 마지막 층은 $L$), 앞 절의 로짓 $z^{(1)},z^{(2)}$가 $z^{(l)}$에, 활성값 $h,o$가 $a^{(l)}$에 해당합니다. 델타는 다음 **재귀식**을 따릅니다.
 
 $$
 \delta^{(L)}_j=\bigl(d_j-a^{(L)}_j\bigr)\,\varphi'\!\bigl(z^{(L)}_j\bigr),
@@ -429,10 +444,10 @@ eta = 0.5
 for epoch in range(3000):
     for x, d in zip(X, D):
         # ── 순방향 전파 ──
-        v = W1 @ x + b1;  h = sigmoid(v)          # 은닉층
-        y = W2 @ h + b2;  o = sigmoid(y)          # 출력층
+        z1 = W1 @ x + b1;  h = sigmoid(z1)        # 은닉층: 로짓 z1 → 출력 h
+        z2 = W2 @ h + b2;  o = sigmoid(z2)        # 출력층: 로짓 z2 → 출력 o
         # ── 역방향 전파(일반화 델타 규칙) ──
-        delta2 = (d - o) * o * (1 - o)            # 출력층 δ_k
+        delta2 = (d - o) * o * (1 - o)            # 출력층 δ_k = (d-o)·o(1-o)
         delta1 = (W2.T @ delta2) * h * (1 - h)    # 은닉층 δ^(1)_j (오차 역전파)
         # ── 가중치·편향 갱신 ──
         W2 += eta * np.outer(delta2, h);  b2 += eta * delta2
