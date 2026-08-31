@@ -33,6 +33,15 @@ print("grad w:", w.grad)
 print("grad b:", b.grad)
 ```
 
+실행 결과는 다음과 같습니다. 부동소수점 표현 때문에 `0.1`이 매우 작은 오차를 포함해 표시될 수 있습니다.
+
+```text
+NumPy output: 0.10000000000000009
+PyTorch output: 0.09999994188547134
+grad w: tensor([1., 2., 3.])
+grad b: tensor(1.)
+```
+
 `y`를 각 가중치로 미분하면 입력값이 되므로 `w.grad`는 `x`와 같습니다. 편향은 결과에 1배로 더해지므로 `b.grad`는 1입니다.
 
 ## 예제 2. 브로드캐스팅
@@ -47,6 +56,15 @@ print("NumPy:\n", A_np + offset_np)
 A = torch.tensor([[1., 2., 3.], [4., 5., 6.]])
 offset = torch.tensor([1., 0., -1.])
 print("PyTorch:\n", A + offset)
+```
+
+```text
+NumPy:
+ [[2. 2. 2.]
+  [5. 5. 5.]]
+PyTorch:
+ tensor([[2., 2., 2.],
+         [5., 5., 5.]])
 ```
 
 ## 예제 3. ReLU와 결과 시각화
@@ -67,6 +85,8 @@ plt.title("Linear Transformation and ReLU Activation")
 plt.legend(); plt.grid(True); plt.show()
 ```
 
+실행하면 직선 `y=x+0.5`와, 음수 구간을 0으로 자른 ReLU 곡선이 함께 나타납니다. 두 곡선은 $x=-0.5$부터 일치합니다.
+
 ## 예제 4. CPU·GPU 자동 선택
 
 교재 [프로그램 1-7]처럼 사용 가능한 장치를 고르고 모든 텐서를 같은 장치에 생성합니다.
@@ -78,6 +98,13 @@ x = torch.tensor([1.0, 2.0, 3.0], device=device)
 w = torch.tensor([0.5, 0.2, -0.3], device=device, requires_grad=True)
 b = torch.tensor(0.1, device=device, requires_grad=True)
 print("result:", (x @ w + b).item())
+```
+
+CPU 환경의 실행 예시는 다음과 같습니다. CUDA가 설치된 환경에서는 첫 줄이 `using device: cuda`로 바뀝니다.
+
+```text
+using device: cpu
+result: 0.09999994188547134
 ```
 
 ## 실습문제
@@ -148,7 +175,3 @@ y_tanh = # TODO
 # TODO: 세 곡선과 범례, 축 이름, 격자 추가
 plt.show()
 ```
-
-**제출물**: 완성한 노트북 또는 `.py` 파일, 문제 2·5의 설명, 모든 실행 결과와 그래프.
-
-> 예제 출처: 김태훈, 『IT CookBook, 파이토치로 배우는 현대 인공지능』, 한빛아카데미(2026), 제공 코드 `1_3.py`, `1_7.py`를 강의 흐름에 맞게 발췌·재구성.
