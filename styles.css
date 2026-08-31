@@ -77,6 +77,26 @@ hr {
 .keybox p { margin: 0; }
 :root:not([data-theme="light"]) .keybox { background: #10261f; }
 
+/* 본문 내 핵심 용어 강조: [텍스트]{.imp} */
+.imp { color: #1AB18B; font-weight: 700; }
+
+/* 수식·그림 아래 보조 설명(작은 회색 목록): ::: {.eqnote} */
+.eqnote {
+  font-size: 0.9em; color: #555;
+  margin: -0.2rem 0 1.2rem 0.4rem;
+  border-left: 2px solid #d9dde2; padding-left: 0.9em;
+}
+.eqnote strong { color: #128a6c; }
+
+/* 컬러 테두리 콜아웃 박스: ::: {.callbox} … :::  (기본 주황=주의) */
+.callbox {
+  border: 2px solid #F08C1D; border-radius: 12px; background: #fffaf2;
+  padding: 0.7em 1.1em; margin: 1.2rem 0;
+}
+.callbox.teal { border-color: #1AB18B; background: #f1fbf8; }
+.callbox.red  { border-color: #E8402E; background: #fdf3f2; }
+:root:not([data-theme="light"]) .callbox { background: #2a2213; }
+
 /* 수동 그림 캡션 (MIT vision book 스타일: 설명형·가운데·작게) */
 .figcap {
   text-align: center;
