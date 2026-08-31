@@ -75,7 +75,6 @@ hr {
   border-radius: 6px;
 }
 .keybox p { margin: 0; }
-:root:not([data-theme="light"]) .keybox { background: #10261f; }
 
 /* 본문 내 핵심 용어 강조: [텍스트]{.imp} */
 .imp { color: #1AB18B; font-weight: 700; }
@@ -95,7 +94,6 @@ hr {
 }
 .callbox.teal { border-color: #1AB18B; background: #f1fbf8; }
 .callbox.red  { border-color: #E8402E; background: #fdf3f2; }
-:root:not([data-theme="light"]) .callbox { background: #2a2213; }
 
 /* 수동 그림 캡션 (MIT vision book 스타일: 설명형·가운데·작게) */
 .figcap {
