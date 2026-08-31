@@ -1,6 +1,6 @@
 # 3. 코딩실습 {#sec-ch1-lab}
 
-이번 실습에서는 교재 1장의 예제 코드로 NumPy 배열과 PyTorch 텐서의 선형 연산, 자동미분, 브로드캐스팅, 활성화 함수와 연산 장치를 확인합니다.
+이번 실습에서는 1주차 이론에서 학습한 배열과 텐서, 선형 연산, 자동미분, 브로드캐스팅, 활성화 함수와 연산 장치를 코드로 확인합니다.
 
 ## 실습 준비
 
@@ -13,9 +13,30 @@ print("PyTorch version:", torch.__version__)
 print("CUDA available:", torch.cuda.is_available())
 ```
 
-## 예제 1. NumPy와 PyTorch의 선형 연산
+## 예제 1. NumPy 배열과 PyTorch 텐서
 
-교재 `1_7.py`의 [프로그램 1-3], [프로그램 1-4]처럼 두 라이브러리에서 $y=x^T w+b$를 계산하고 PyTorch 자동미분으로 기울기를 구합니다.
+같은 데이터를 NumPy 배열과 PyTorch 텐서로 만들고 자료형, 모양, 기본 연산 결과를 비교합니다.
+
+```python
+array = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.float32)
+tensor = torch.tensor(array)
+
+print("NumPy shape:", array.shape, "dtype:", array.dtype)
+print("PyTorch shape:", tensor.shape, "dtype:", tensor.dtype)
+print("NumPy row mean:", array.mean(axis=1))
+print("PyTorch row mean:", tensor.mean(dim=1))
+```
+
+```text
+NumPy shape: (2, 3) dtype: float32
+PyTorch shape: torch.Size([2, 3]) dtype: torch.float32
+NumPy row mean: [2. 5.]
+PyTorch row mean: tensor([2., 5.])
+```
+
+## 예제 2. 선형 연산과 자동미분
+
+두 라이브러리에서 $y=x^T w+b$를 계산하고 PyTorch 자동미분으로 기울기를 구합니다.
 
 ```python
 x_np = np.array([1.0, 2.0, 3.0])
@@ -44,9 +65,9 @@ grad b: tensor(1.)
 
 `y`를 각 가중치로 미분하면 입력값이 되므로 `w.grad`는 `x`와 같습니다. 편향은 결과에 1배로 더해지므로 `b.grad`는 1입니다.
 
-## 예제 2. 브로드캐스팅
+## 예제 3. 브로드캐스팅
 
-교재 [프로그램 1-5]처럼 행렬의 각 행에 같은 벡터를 더합니다.
+행렬의 각 행에 같은 벡터를 더해 브로드캐스팅 규칙을 확인합니다.
 
 ```python
 A_np = np.array([[1., 2., 3.], [4., 5., 6.]])
@@ -67,9 +88,9 @@ PyTorch:
          [5., 5., 5.]])
 ```
 
-## 예제 3. ReLU와 결과 시각화
+## 예제 4. ReLU와 결과 시각화
 
-교재 [프로그램 1-6], [프로그램 1-8]을 연결해 선형 변환과 ReLU 적용 결과를 비교합니다.
+선형 변환과 ReLU 적용 결과를 비교합니다.
 
 ```python
 x = torch.linspace(-3, 3, steps=100)
@@ -85,11 +106,16 @@ plt.title("Linear Transformation and ReLU Activation")
 plt.legend(); plt.grid(True); plt.show()
 ```
 
-실행하면 직선 `y=x+0.5`와, 음수 구간을 0으로 자른 ReLU 곡선이 함께 나타납니다. 두 곡선은 $x=-0.5$부터 일치합니다.
+```text
+그래프 실행 결과
+- Linear output: y = x + 0.5인 직선
+- ReLU output: x < -0.5 구간의 출력은 0
+- x >= -0.5 구간에서는 두 곡선이 일치
+```
 
-## 예제 4. CPU·GPU 자동 선택
+## 예제 5. CPU·GPU 자동 선택
 
-교재 [프로그램 1-7]처럼 사용 가능한 장치를 고르고 모든 텐서를 같은 장치에 생성합니다.
+사용 가능한 장치를 고르고 모든 텐서를 같은 장치에 생성합니다.
 
 ```python
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
