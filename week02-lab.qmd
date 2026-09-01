@@ -1,179 +1,206 @@
 # 3. 코딩실습 {#sec-ch2-lab}
 
-이번 실습에서는 2주차 이론에서 학습한 지도학습과 비지도학습, 단일 뉴런, 손실 함수, 경사하강법, 학습률과 성능 평가를 코드로 확인합니다.
+2주차 이론 중 코드로 확인할 수 있는 학습 유형, 신경망 학습, 평가·검증, 최적화, 정규화·초기화, 데이터 파이프라인을 실행합니다.
 
-## 예제 1. 선형 분류 모델
-
-라벨이 있는 데이터를 사용해 결정 경계를 학습하는 지도학습 예제입니다.
+## 실습 준비
 
 ```python
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import matplotlib.pyplot as plt
-import numpy as np
+from torch.utils.data import TensorDataset, DataLoader
 
 torch.manual_seed(0)
-X = torch.randn(100, 2)
-y = (X[:, 0] + X[:, 1] > 0).float()
-model = nn.Sequential(nn.Linear(2, 1), nn.Sigmoid())
-criterion = nn.BCELoss()
-optimizer = optim.SGD(model.parameters(), lr=0.1)
-loss_history = []
+```
 
-for epoch in range(50):
-    optimizer.zero_grad()
-    output = model(X).squeeze()
-    loss = criterion(output, y)
+## 예제 1. 지도학습과 비지도학습
+
+지도학습은 정답을 사용하고, 비지도학습은 입력 사이의 구조만 이용합니다.
+
+```python
+X = torch.tensor([[1., 1.], [1., 2.], [4., 4.], [5., 4.]])
+y = torch.tensor([0, 0, 1, 1])
+centroids = torch.tensor([[1., 1.], [5., 4.]])
+cluster = torch.cdist(X, centroids).argmin(dim=1)
+
+print("supervised labels:", y)
+print("unsupervised clusters:", cluster)
+```
+
+```text
+supervised labels: tensor([0, 0, 1, 1])
+unsupervised clusters: tensor([0, 0, 1, 1])
+```
+
+## 예제 2. 순전파·역전파·경사하강법
+
+$y=3x-1$ 데이터를 이용해 가중치와 편향을 직접 학습합니다.
+
+```python
+x = torch.tensor([-2., -1., 1., 2.])
+y = 3 * x - 1
+w = torch.tensor(0., requires_grad=True)
+b = torch.tensor(0., requires_grad=True)
+
+for _ in range(60):
+    prediction = w * x + b
+    loss = ((prediction - y) ** 2).mean()
     loss.backward()
-    optimizer.step()
-    loss_history.append(loss.item())
+    with torch.no_grad():
+        w -= 0.1 * w.grad
+        b -= 0.1 * b.grad
+    w.grad.zero_()
+    b.grad.zero_()
 
-with torch.no_grad():
-    prediction = (model(X).squeeze() > 0.5).long()
-    accuracy = (prediction == y.long()).float().mean()
-print("accuracy:", accuracy.item())
-plt.plot(loss_history)
-plt.xlabel("Epoch"); plt.ylabel("Loss")
-plt.title("Training Loss"); plt.grid(True); plt.show()
+print("w:", w.item(), "b:", b.item())
+print("loss:", loss.item())
 ```
 
 ```text
-first loss: 1.0206
-last loss: 0.4124
-accuracy: 0.8899999856948853
-그래프: 에폭이 증가할수록 손실이 지속적으로 감소
+w: 3.0 b: -0.9999984502792358
+loss: 3.637978807091713e-12
 ```
 
-## 예제 2. K-means 군집화
+## 예제 3. 임계값과 분류 평가지표
 
-라벨 없이 데이터 사이의 거리를 이용하는 비지도학습 예제입니다.
-
-```python
-torch.manual_seed(0)
-X_cluster = torch.cat([
-    torch.randn(100, 2) + torch.tensor([2.0, 0.0]),
-    torch.randn(100, 2) + torch.tensor([-2.0, 0.0])
-], dim=0)
-centroids = X_cluster[torch.randperm(X_cluster.size(0))[:2]]
-
-for step in range(20):
-    distances = torch.cdist(X_cluster, centroids)
-    labels = distances.argmin(dim=1)
-    new_centroids = torch.stack([
-        X_cluster[labels == i].mean(dim=0) for i in range(2)
-    ])
-    if torch.allclose(centroids, new_centroids):
-        break
-    centroids = new_centroids
-
-print("iterations:", step + 1)
-print("centroids:\n", centroids)
-plt.scatter(X_cluster[:, 0], X_cluster[:, 1], c=labels, cmap="viridis")
-plt.scatter(centroids[:, 0], centroids[:, 1], c="red", s=200, marker="X")
-plt.title("K-means Clustering Result"); plt.show()
-```
-
-```text
-iterations: 3
-centroids:
- tensor([[-2.0863, -0.1237],
-         [ 1.9203, -0.0053]])
-그래프: 두 군집과 각 군집의 빨간색 중심점 표시
-```
-
-## 예제 3. 단일 뉴런과 경사하강법
-
-$\hat y=wx+b$인 뉴런 하나를 학습하며 순전파, 손실 계산, 역전파와 파라미터 갱신 순서를 확인합니다.
-
-```python
-x = torch.tensor([2.0]); y_true = torch.tensor([4.0])
-w = torch.tensor([0.1], requires_grad=True)
-b = torch.tensor([0.0], requires_grad=True)
-optimizer = optim.SGD([w, b], lr=0.1)
-criterion = nn.MSELoss()
-
-for step in range(10):
-    optimizer.zero_grad()
-    y_pred = w * x + b
-    loss = criterion(y_pred, y_true)
-    loss.backward()
-    print(f"step {step:2d} | w={w.item():.4f} | b={b.item():.4f} "
-          f"| grad_w={w.grad.item():.4f} | loss={loss.item():.4f}")
-    optimizer.step()
-```
-
-```text
-step  0 | w=0.1000 | b=0.0000 | grad_w=-15.2000 | loss=14.4400
-step  1 | w=1.6200 | b=0.7600 | grad_w=0.0000  | loss=0.0000
-...
-step  9 | w=1.6200 | b=0.7600 | grad_w=0.0000  | loss=0.0000
-최종 확인: 2 × 1.62 + 0.76 = 4.00
-```
-
-## 예제 4. 학습률과 손실 표면
-
-학습률별 파라미터 이동과 손실 함수의 모양을 관찰합니다.
-
-```python
-def run_lr(rate, steps=8):
-    w = torch.tensor([0.1], requires_grad=True)
-    optimizer = optim.SGD([w], lr=rate)
-    history = []
-    for _ in range(steps):
-        optimizer.zero_grad()
-        loss = (w * 2.0 - 4.0).pow(2).mean()
-        loss.backward(); optimizer.step()
-        history.append((w.item(), loss.item()))
-    return history
-
-for rate in [0.01, 0.1, 0.5]:
-    print(f"lr={rate}:", run_lr(rate))
-
-ws = np.linspace(-2, 4, 200)
-plt.plot(ws, (2 * ws - 4) ** 2)
-plt.xlabel("w"); plt.ylabel("Loss")
-plt.title("Loss Surface for w"); plt.grid(True); plt.show()
-```
-
-대표 실행 결과는 다음과 같습니다.
-
-```text
-lr=0.01: 손실 14.4400 → 4.4936
-lr=0.10: 손실 14.4400 → 0.0000
-lr=0.50: 손실 14.4400 → 69066064.0000
-```
-
-`0.01`은 천천히 감소하고 `0.1`은 빠르게 최솟값에 도달하지만, `0.5`는 최솟값을 계속 지나치면서 발산합니다. 손실 표면은 $w=2$에서 최솟값 0을 갖는 포물선입니다.
-
-## 예제 5. 혼동행렬과 분류 평가지표
-
-예측값으로 혼동행렬을 만들고 정확도, 정밀도, 재현율을 직접 계산합니다.
+임계값을 바꾸며 정확도, 정밀도와 재현율을 비교합니다.
 
 ```python
 y_true = torch.tensor([1, 1, 1, 0, 0, 0, 1, 0])
-y_pred = torch.tensor([1, 1, 0, 0, 0, 1, 1, 0])
+score = torch.tensor([.9, .7, .4, .8, .3, .2, .6, .1])
 
-tp = ((y_true == 1) & (y_pred == 1)).sum().item()
-tn = ((y_true == 0) & (y_pred == 0)).sum().item()
-fp = ((y_true == 0) & (y_pred == 1)).sum().item()
-fn = ((y_true == 1) & (y_pred == 0)).sum().item()
-
-accuracy = (tp + tn) / len(y_true)
-precision = tp / (tp + fp)
-recall = tp / (tp + fn)
-
-print(f"confusion matrix: [[{tn}, {fp}], [{fn}, {tp}]]")
-print(f"accuracy={accuracy:.3f}")
-print(f"precision={precision:.3f}")
-print(f"recall={recall:.3f}")
+for threshold in [0.3, 0.5, 0.7]:
+    pred = (score >= threshold).long()
+    tp = ((y_true == 1) & (pred == 1)).sum().item()
+    tn = ((y_true == 0) & (pred == 0)).sum().item()
+    fp = ((y_true == 0) & (pred == 1)).sum().item()
+    fn = ((y_true == 1) & (pred == 0)).sum().item()
+    accuracy = (tp + tn) / len(y_true)
+    precision = tp / (tp + fp)
+    recall = tp / (tp + fn)
+    print(threshold, f"acc={accuracy:.3f}",
+          f"precision={precision:.3f}", f"recall={recall:.3f}")
 ```
 
 ```text
-confusion matrix: [[3, 1], [1, 3]]
-accuracy=0.750
-precision=0.750
-recall=0.750
+0.3 acc=0.750 precision=0.667 recall=1.000
+0.5 acc=0.750 precision=0.750 recall=0.750
+0.7 acc=0.625 precision=0.667 recall=0.500
+```
+
+## 예제 4. 5-겹 교차검증
+
+다섯 구간을 한 번씩 검증 데이터로 사용해 검증 MSE의 평균과 표준편차를 구합니다.
+
+```python
+torch.manual_seed(3)
+X = torch.linspace(-2, 2, 100).unsqueeze(1)
+y = 2 * X + 0.3 * torch.randn_like(X)
+folds = torch.arange(100).reshape(5, 20)
+scores = []
+
+for k in range(5):
+    val_idx = folds[k]
+    train_idx = torch.cat([folds[j] for j in range(5) if j != k])
+    torch.manual_seed(10 + k)
+    model = nn.Linear(1, 1)
+    optimizer = optim.SGD(model.parameters(), lr=0.05)
+    for _ in range(150):
+        optimizer.zero_grad()
+        loss = ((model(X[train_idx]) - y[train_idx]) ** 2).mean()
+        loss.backward()
+        optimizer.step()
+    with torch.no_grad():
+        scores.append(((model(X[val_idx]) - y[val_idx]) ** 2).mean().item())
+
+scores = torch.tensor(scores)
+print("fold MSE:", scores)
+print("mean:", scores.mean().item())
+print("std:", scores.std(correction=0).item())
+```
+
+```text
+fold MSE: tensor([0.0645, 0.0904, 0.0959, 0.0938, 0.0720])
+mean: 0.08334578573703766
+std: 0.012656395323574543
+```
+
+## 예제 5. SGD와 Adam 비교
+
+동일한 시작점에서 $(w-3)^2$을 30회 최소화합니다.
+
+```python
+for name in ["SGD", "Adam"]:
+    w = torch.tensor([-4.0], requires_grad=True)
+    optimizer = (optim.SGD([w], lr=0.1) if name == "SGD"
+                 else optim.Adam([w], lr=0.1))
+    for _ in range(30):
+        optimizer.zero_grad()
+        loss = (w - 3).pow(2).mean()
+        loss.backward()
+        optimizer.step()
+    print(name, f"w={w.item():.4f}",
+          f"loss={(w - 3).pow(2).item():.6f}")
+```
+
+```text
+SGD w=2.9913 loss=0.000075
+Adam w=-1.1327 loss=17.078831
+```
+
+이 단순한 문제와 제한된 반복 횟수에서는 SGD가 더 빨랐습니다. 결과는 문제, 학습률과 반복 횟수에 따라 달라집니다.
+
+## 예제 6. L2 정규화와 He 초기화
+
+L2 페널티를 계산하고, 여러 ReLU 층을 통과한 출력 분산을 초기화 방식별로 비교합니다.
+
+```python
+weight = torch.tensor([3., 4.])
+data_loss = torch.tensor(2.0)
+l2_penalty = 0.1 * (weight ** 2).sum()
+print("objective:", (data_loss + l2_penalty).item())
+
+def output_variance(use_he):
+    torch.manual_seed(1)
+    layers = []
+    for _ in range(6):
+        layer = nn.Linear(64, 64)
+        if use_he:
+            nn.init.kaiming_normal_(layer.weight, nonlinearity="relu")
+            nn.init.zeros_(layer.bias)
+        layers += [layer, nn.ReLU()]
+    x = torch.randn(512, 64)
+    for layer in layers:
+        x = layer(x)
+    return x.var().item()
+
+print("default variance:", output_variance(False))
+print("He variance:", output_variance(True))
+```
+
+```text
+objective: 4.5
+default variance: 0.0017423933604732156
+He variance: 0.8080154061317444
+```
+
+## 예제 7. Dataset과 DataLoader
+
+입력과 정답을 데이터셋으로 묶고 미니배치 단위로 순회합니다.
+
+```python
+X = torch.tensor([[1.], [2.], [3.], [4.], [5.]])
+y = 2 * X
+loader = DataLoader(TensorDataset(X, y), batch_size=2, shuffle=False)
+
+for batch_no, (xb, yb) in enumerate(loader, start=1):
+    print(f"batch {batch_no}: x={xb.squeeze().tolist()}, y={yb.squeeze().tolist()}")
+```
+
+```text
+batch 1: x=[1.0, 2.0], y=[2.0, 4.0]
+batch 2: x=[3.0, 4.0], y=[6.0, 8.0]
+batch 3: x=5.0, y=10.0
 ```
 
 ## 실습문제
@@ -182,15 +209,16 @@ recall=0.750
 
 ### 문제 1. 선형 분류 정확도 계산
 
-예제 1에서 임계값을 0.3, 0.5, 0.7로 바꾸어 정확도를 표로 정리하고 예측 클래스에 미치는 영향을 설명하세요.
+다음 예측 점수의 임계값을 0.3, 0.5, 0.7로 바꾸어 정확도를 표로 정리하고 예측 클래스에 미치는 영향을 설명하세요.
 
 ```python
-with torch.no_grad():
-    probability = model(X).squeeze()
-    for threshold in [0.3, 0.5, 0.7]:
-        prediction = # TODO
-        accuracy = # TODO
-        print(threshold, accuracy.item())
+y_true = torch.tensor([1, 1, 1, 0, 0, 0, 1, 0])
+score = torch.tensor([.9, .7, .4, .8, .3, .2, .6, .1])
+
+for threshold in [0.3, 0.5, 0.7]:
+    prediction = # TODO
+    accuracy = # TODO
+    print(threshold, accuracy.item())
 ```
 
 ### 문제 2. K-means의 군집 수 변경
@@ -214,9 +242,21 @@ for step in range(30):
 
 ### 문제 3. 학습률 비교 실험
 
-학습률 `0.001`, `0.01`, `0.1`, `0.5`를 20스텝 동안 비교해 손실 곡선을 한 그래프에 그리고 가장 안정적인 값을 고르세요.
+학습률 `0.001`, `0.01`, `0.1`, `0.5`를 20스텝 동안 비교해 손실 곡선을 한 그래프에 그리고 가장 안정적인 값을 고르세요. 먼저 아래의 `run_lr` 함수를 완성합니다.
 
 ```python
+def run_lr(rate, steps=20):
+    w = torch.tensor([0.1], requires_grad=True)
+    optimizer = optim.SGD([w], lr=rate)
+    history = []
+    for _ in range(steps):
+        optimizer.zero_grad()
+        loss = (w * 2.0 - 4.0).pow(2).mean()
+        loss.backward()
+        optimizer.step()
+        history.append((w.item(), loss.item()))
+    return history
+
 for rate in [0.001, 0.01, 0.1, 0.5]:
     history = # TODO: run_lr 호출
     losses = # TODO: 손실만 추출
