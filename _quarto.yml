@@ -10,35 +10,35 @@ book:
     - index.qmd
     - part: "1주차 · AI 모델 학습 개요"
       chapters:
-        - week01-lecture.qmd
-        - week01-quiz.qmd
-        - week01-lab.qmd
+        - week01_lecture.qmd
+        - week01_quiz.qmd
+        - week01_code.qmd
     - part: "2주차 · 모델 학습 기본 개념"
       chapters:
-        - week02-lecture.qmd
-        - week02-quiz.qmd
-        - week02-lab.qmd
+        - week02_lecture.qmd
+        - week02_quiz.qmd
+        - week02_code.qmd
     - part: "3주차 · RNN·LSTM·GRU 기반 시계열 모델링"
       chapters:
-        - week03-lecture.qmd
-        - week03-quiz.qmd
-        - week03-lab.qmd
+        - week03_lecture.qmd
+        - week03_quiz.qmd
+        - week03_code.qmd
     - part: "4주차 · Transformer 기반 시계열 모델링"
       chapters:
-        - week04-lecture.qmd
-        - week04-quiz.qmd
-        - week04-lab.qmd
+        - week04_lecture.qmd
+        - week04_quiz.qmd
+        - week04_code.qmd
     - part: "5주차 · CNN 기반 이미지 분류와 전이학습"
       chapters:
-        - week05-lecture.qmd
-        - week05-quiz.qmd
-        - week05-lab.qmd
+        - week05_lecture.qmd
+        - week05_quiz.qmd
+        - week05_code.qmd
     - part: "6주차 · 객체탐지와 최신 이미지 모델"
       chapters:
-        - week06-lecture.qmd
+        - week06_lecture.qmd
     - part: "7주차 · 생성 모델 입문"
       chapters:
-        - week07-lecture.qmd
+        - week07_lecture.qmd
   page-footer:
     left: "AI 모델링 실습"
     right: "2026-2학기"
