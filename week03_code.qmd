@@ -1,131 +1,480 @@
+---
+jupyter: python3
+execute:
+  enabled: true
+  eval: true
+  echo: true
+  output: true
+  error: false
+  cache: false
+  freeze: false
+---
+
 # 3. 코딩실습 {#sec-ch3-lab}
 
-## 예제 코드
+## 실습 준비
 
-```python
-import torch, torch.nn as nn, torch.optim as optim
+필요한 라이브러리를 가져오고 난수 시드와 실행 장치를 고정합니다. 배포 환경에서도 같은 흐름으로 실행할 수 있도록 CPU를 사용합니다.
+
+```{python}
+#| echo: false
+#| output: false
+from io import BytesIO
+import matplotlib.pyplot as plt
+
+_warmup_figure = plt.figure()
+plt.plot([], [])
+_warmup_figure.savefig(BytesIO(), format="png")
+plt.close(_warmup_figure)
+```
+
+```{python}
+import math
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-torch.manual_seed(0)
+torch.manual_seed(42)
+device = torch.device("cpu")
 
-# 1) 합성 시계열: 두 주파수의 사인파 + 잡음
-T_total = 3000
-t = torch.linspace(0, 100, T_total)
-series = torch.sin(t) + 0.5*torch.sin(3*t) + 0.1*torch.randn(T_total)
-
-# 2) 슬라이딩 윈도로 (입력 시퀀스, 다음 값) 쌍 생성
-def make_windows(series, win=40):
-    X, Y = [], []
-    for i in range(len(series)-win):
-        X.append(series[i:i+win])
-        Y.append(series[i+win])
-    X = torch.stack(X).unsqueeze(-1)   # (N, win, 1)
-    Y = torch.stack(Y).unsqueeze(-1)   # (N, 1)
-    return X, Y
-
-X, Y = make_windows(series, win=40)
-n_tr = int(0.8*len(X))                 # 시계열은 시간 순으로 분할(셔플 금지)
-tl = DataLoader(TensorDataset(X[:n_tr], Y[:n_tr]), batch_size=64, shuffle=True)
-el = DataLoader(TensorDataset(X[n_tr:], Y[n_tr:]), batch_size=256)
-
-class Forecaster(nn.Module):
-    def __init__(self, kind="lstm", hidden=64):
-        super().__init__()
-        rnn = {"rnn": nn.RNN, "lstm": nn.LSTM, "gru": nn.GRU}[kind]
-        self.rnn = rnn(1, hidden, batch_first=True)
-        self.head = nn.Linear(hidden, 1)
-    def forward(self, x):
-        out, _ = self.rnn(x)
-        return self.head(out[:, -1, :])
-
-def train_eval(kind):
-    model = Forecaster(kind).to(device)
-    opt = optim.Adam(model.parameters(), lr=1e-3)
-    crit = nn.MSELoss()
-    for ep in range(20):
-        model.train()
-        for xb, yb in tl:
-            xb, yb = xb.to(device), yb.to(device)
-            opt.zero_grad(); loss = crit(model(xb), yb)
-            loss.backward(); opt.step()
-    model.eval(); se = n = 0
-    with torch.no_grad():
-        for xb, yb in el:
-            xb, yb = xb.to(device), yb.to(device)
-            se += ((model(xb)-yb)**2).sum().item(); n += len(xb)
-    return se/n
-
-print("test MSE:", round(train_eval("lstm"), 4))
+print("PyTorch:", torch.__version__)
+print("실행 장치:", device)
 ```
+
+## 예제 1. 일 단위 시계열 만들기
+
+720일 동안 관측한 값을 가정하여 추세, 30일 주기, 7일 주기와 잡음을 결합합니다. 시계열의 앞 240일을 그려 시간 순서와 반복 패턴을 확인합니다.
+
+```{python}
+total_days = 720
+rng = np.random.default_rng(42)
+days_np = np.arange(total_days, dtype=np.float32)
+
+series_np = (
+    0.002 * days_np
+    + np.sin(2 * math.pi * days_np / 30)
+    + 0.35 * np.sin(2 * math.pi * days_np / 7)
+    + 0.12 * rng.standard_normal(total_days)
+)
+
+plt.figure(figsize=(10, 3))
+plt.plot(days_np[:240], series_np[:240], color="#1AB18B", linewidth=1.4)
+plt.xlabel("Day")
+plt.ylabel("Value")
+plt.title("Synthetic daily time series")
+plt.grid(alpha=0.25)
+plt.tight_layout()
+plt.show()
+
+series = torch.tensor(series_np, dtype=torch.float32)
+print("원시 시계열 shape:", tuple(series.shape))
+print("관측 기간:", len(series), "일")
+```
+
+series는 아직 길이가 720인 1차원 배열입니다. 순환 신경망에 넣으려면 과거 (N)일을 입력으로, 그다음 값을 정답으로 묶은 학습 표본으로 변환해야 합니다.
+
+## 예제 2. 슬라이딩 윈도우로 입력과 정답 만들기
+
+입력 기간을 (N=30)일로 정합니다. 첫 표본은 0~29일을 입력으로 사용하고 30일째 값을 정답으로 사용합니다. 윈도우를 한 칸씩 이동하면 하나의 긴 시계열에서 여러 학습 표본을 얻을 수 있습니다.
+
+```{python}
+def make_windows(series, window=30, horizon=1):
+    """1차원 시계열을 (입력 윈도우, 미래 정답) 쌍으로 변환합니다."""
+    inputs, targets, target_starts = [], [], []
+
+    for start in range(len(series) - window - horizon + 1):
+        inputs.append(series[start:start + window])
+        targets.append(series[start + window:start + window + horizon])
+        target_starts.append(start + window)
+
+    X = torch.stack(inputs).unsqueeze(-1)  # (samples, N, features)
+    y = torch.stack(targets)               # (samples, horizon)
+    target_starts = torch.tensor(target_starts)
+    return X, y, target_starts
+
+
+N = 30
+X_raw, y_raw, target_starts = make_windows(series, window=N, horizon=1)
+
+print("전체 입력 X shape:", tuple(X_raw.shape))
+print("전체 정답 y shape:", tuple(y_raw.shape))
+print("표본 1개의 입력 shape:", tuple(X_raw[0].shape))
+print("표본 1개의 정답 shape:", tuple(y_raw[0].shape))
+```
+
+X_raw.shape의 세 축은 각각 **표본 수, 입력 일수, 특성 수**입니다. 여기서는 하루에 값 하나만 관측하므로 features=1입니다. 배치로 묶으면 모델이 받는 최종 모양은 (batch, N, features)가 됩니다.
+
+## 예제 3. 시간 순서 분할과 정규화
+
+앞 70%를 훈련 구간, 다음 15%를 검증 구간, 마지막 15%를 테스트 구간으로 사용합니다. 평균과 표준편차는 훈련 구간에서만 계산하여 미래 정보가 정규화 과정에 섞이지 않게 합니다.
+
+```{python}
+train_end = round(total_days * 0.70)
+val_end = round(total_days * 0.85)
+
+train_mean = series[:train_end].mean()
+train_std = series[:train_end].std()
+series_z = (series - train_mean) / train_std
+
+
+def split_windows(X, y, target_starts, horizon, train_end, val_end):
+    """예측 대상 전체가 각 구간 안에 들어가는 표본만 선택합니다."""
+    target_ends = target_starts + horizon
+    train_mask = target_ends <= train_end
+    val_mask = (target_starts >= train_end) & (target_ends <= val_end)
+    test_mask = target_starts >= val_end
+
+    return (
+        TensorDataset(X[train_mask], y[train_mask]),
+        TensorDataset(X[val_mask], y[val_mask]),
+        TensorDataset(X[test_mask], y[test_mask]),
+    )
+
+
+X, y, target_starts = make_windows(series_z, window=N, horizon=1)
+train_set, val_set, test_set = split_windows(
+    X, y, target_starts, horizon=1,
+    train_end=train_end, val_end=val_end
+)
+
+train_loader = DataLoader(
+    train_set,
+    batch_size=64,
+    shuffle=True,
+    generator=torch.Generator().manual_seed(42),
+)
+val_loader = DataLoader(val_set, batch_size=128, shuffle=False)
+test_loader = DataLoader(test_set, batch_size=128, shuffle=False)
+
+batch_X, batch_y = next(iter(train_loader))
+print("훈련/검증/테스트 표본 수:",
+      len(train_set), len(val_set), len(test_set))
+print("한 배치의 X shape:", tuple(batch_X.shape))
+print("한 배치의 y shape:", tuple(batch_y.shape))
+```
+
+batch_X의 모양 (batch, 30, 1)은 한 번에 여러 표본을 처리하고, 각 표본이 30일의 순서와 하루당 특성 하나를 가진다는 뜻입니다. batch_first=True인 PyTorch 순환층이 바로 이 축 순서를 사용합니다.
+
+## 예제 4. RNN·LSTM·GRU 예측기 만들기
+
+세 모델이 같은 입력과 출력 인터페이스를 갖도록 하나의 클래스로 구성합니다. 순환층의 모든 시점 출력 중 마지막 시점의 은닉 표현을 선형층에 넣어 다음 날 값을 예측합니다.
+
+```{python}
+class RecurrentForecaster(nn.Module):
+    def __init__(self, kind="lstm", hidden_size=32, horizon=1):
+        super().__init__()
+
+        recurrent_layers = {
+            "rnn": nn.RNN,
+            "lstm": nn.LSTM,
+            "gru": nn.GRU,
+        }
+        if kind not in recurrent_layers:
+            raise ValueError("kind는 rnn, lstm, gru 중 하나여야 합니다.")
+
+        self.recurrent = recurrent_layers[kind](
+            input_size=1,
+            hidden_size=hidden_size,
+            batch_first=True,
+        )
+        self.head = nn.Linear(hidden_size, horizon)
+
+    def forward(self, x):
+        sequence_output, state = self.recurrent(x)
+        last_output = sequence_output[:, -1, :]
+        return self.head(last_output)
+
+
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
+for kind in ["rnn", "lstm", "gru"]:
+    torch.manual_seed(42)
+    model = RecurrentForecaster(kind=kind, hidden_size=32, horizon=1)
+    prediction = model(batch_X)
+    print(
+        f"{kind.upper():4s}",
+        "출력 shape:", tuple(prediction.shape),
+        "파라미터:", count_parameters(model),
+    )
+```
+
+입력 shape는 세 모델 모두 (batch, N, features)이고 출력 shape는 (batch, 1)입니다. LSTM은 세 게이트와 셀 후보를 계산하므로 파라미터가 가장 많고, GRU는 게이트를 줄여 LSTM보다 간결합니다.
+
+## 예제 5. 세 모델을 같은 조건에서 학습하기
+
+훈련 데이터, 은닉 크기, 학습률과 에폭 수를 동일하게 맞춥니다. 매 에폭의 검증 MSE를 계산하고 가장 낮은 검증 손실을 기록한 파라미터를 최종 모델로 사용합니다. 기울기 폭주를 완화하기 위해 기울기 노름을 1로 제한합니다.
+
+```{python}
+def mse_on_loader(model, loader):
+    model.eval()
+    squared_error = 0.0
+    count = 0
+
+    with torch.no_grad():
+        for xb, yb in loader:
+            prediction = model(xb.to(device))
+            target = yb.to(device)
+            squared_error += ((prediction - target) ** 2).sum().item()
+            count += target.numel()
+
+    return squared_error / count
+
+
+def train_model(kind, train_set, val_loader, horizon=1, epochs=35):
+    torch.manual_seed(100)
+    model = RecurrentForecaster(
+        kind=kind, hidden_size=32, horizon=horizon
+    ).to(device)
+    optimizer = optim.Adam(model.parameters(), lr=0.01)
+    criterion = nn.MSELoss()
+
+    loader = DataLoader(
+        train_set,
+        batch_size=64,
+        shuffle=True,
+        generator=torch.Generator().manual_seed(100),
+    )
+
+    history = {"train": [], "val": []}
+    best_val = float("inf")
+    best_state = None
+
+    for epoch in range(epochs):
+        model.train()
+        loss_sum = 0.0
+        count = 0
+
+        for xb, yb in loader:
+            xb, yb = xb.to(device), yb.to(device)
+            optimizer.zero_grad()
+            loss = criterion(model(xb), yb)
+            loss.backward()
+            nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer.step()
+
+            loss_sum += loss.item() * yb.numel()
+            count += yb.numel()
+
+        train_mse = loss_sum / count
+        val_mse = mse_on_loader(model, val_loader)
+        history["train"].append(train_mse)
+        history["val"].append(val_mse)
+
+        if val_mse < best_val:
+            best_val = val_mse
+            best_state = {
+                name: value.detach().cpu().clone()
+                for name, value in model.state_dict().items()
+            }
+
+    model.load_state_dict(best_state)
+    return model, history, best_val
+
+
+models = {}
+histories = {}
+results = {}
+
+for kind in ["rnn", "lstm", "gru"]:
+    model, history, best_val = train_model(
+        kind, train_set, val_loader, horizon=1, epochs=35
+    )
+    models[kind] = model
+    histories[kind] = history
+    results[kind] = {
+        "parameters": count_parameters(model),
+        "val_mse": best_val,
+        "test_mse": mse_on_loader(model, test_loader),
+    }
+
+print(f"{'모델':<6}{'파라미터':>10}{'검증 MSE':>14}{'테스트 MSE':>14}")
+for kind in ["rnn", "lstm", "gru"]:
+    result = results[kind]
+    print(
+        f"{kind.upper():<6}"
+        f"{result['parameters']:>10,d}"
+        f"{result['val_mse']:>14.5f}"
+        f"{result['test_mse']:>14.5f}"
+    )
+
+plt.figure(figsize=(8, 3.5))
+for kind, history in histories.items():
+    plt.plot(history["val"], label=kind.upper())
+plt.xlabel("Epoch")
+plt.ylabel("Validation MSE")
+plt.title("RNN family validation loss")
+plt.legend()
+plt.grid(alpha=0.25)
+plt.tight_layout()
+plt.show()
+```
+
+모델 구조가 복잡하다고 항상 테스트 오차가 가장 작아지는 것은 아닙니다. 데이터의 패턴과 길이, 최적화 상태에 따라 결과가 달라지므로 파라미터 수와 검증·테스트 오차를 함께 비교합니다.
+
+## 예제 6. LSTM의 다음 날 예측 확인하기
+
+정규화된 LSTM 출력을 원래 단위로 되돌립니다. 직전 값을 그대로 다음 날 예측하는 나이브 기준선과 비교하고, 테스트 구간의 실제값과 예측값을 그래프로 확인합니다.
+
+```{python}
+def collect_predictions(model, loader):
+    model.eval()
+    inputs, predictions, targets = [], [], []
+
+    with torch.no_grad():
+        for xb, yb in loader:
+            inputs.append(xb)
+            predictions.append(model(xb.to(device)).cpu())
+            targets.append(yb)
+
+    return (
+        torch.cat(inputs),
+        torch.cat(predictions),
+        torch.cat(targets),
+    )
+
+
+test_X, pred_z, actual_z = collect_predictions(
+    models["lstm"], test_loader
+)
+
+prediction = pred_z.squeeze(1) * train_std + train_mean
+actual = actual_z.squeeze(1) * train_std + train_mean
+naive = test_X[:, -1, 0] * train_std + train_mean
+
+lstm_mae = (prediction - actual).abs().mean().item()
+lstm_rmse = torch.sqrt(((prediction - actual) ** 2).mean()).item()
+naive_mae = (naive - actual).abs().mean().item()
+
+print(f"LSTM  다음 날 MAE: {lstm_mae:.4f}")
+print(f"LSTM  다음 날 RMSE: {lstm_rmse:.4f}")
+print(f"Naive 다음 날 MAE: {naive_mae:.4f}")
+
+show = min(90, len(actual))
+plt.figure(figsize=(10, 3.5))
+plt.plot(actual[:show], label="Actual", color="#343A40", linewidth=1.8)
+plt.plot(
+    prediction[:show],
+    label="LSTM +1 day",
+    color="#1AB18B",
+    linewidth=1.5,
+)
+plt.xlabel("Test day")
+plt.ylabel("Value")
+plt.title("One-step-ahead forecast")
+plt.legend()
+plt.grid(alpha=0.25)
+plt.tight_layout()
+plt.show()
+```
+
+그래프에서는 전체적인 주기뿐 아니라 최고점과 최저점, 예측이 실제 변화보다 늦게 움직이는 구간도 확인합니다. 수치 지표와 시각화를 함께 사용해야 모델이 어떤 패턴을 놓치는지 판단할 수 있습니다.
 
 ## 실습문제
 
-**문제 1. 세 모델 비교.** `"rnn"`, `"lstm"`, `"gru"` 세 종류로 각각 학습해 테스트 MSE를 비교하는 표를 만드세요. 기본 RNN이 가장 나쁘다면 그 이유를 장기 의존성 관점에서 설명하세요.
+다음 문제의 TODO를 완성합니다. 예제에서 만든 함수와 변수를 재사용하며, 비교 실험에서는 난수 시드·에폭·은닉 크기 등 다른 조건을 동일하게 유지합니다.
 
-**문제 2. 윈도 길이 실험.** 입력 윈도 길이를 10, 40, 100으로 바꿔 LSTM의 성능이 어떻게 달라지는지 관찰하세요.
+### 문제 1. 입력 텐서의 세 축 확인
 
-**문제 3. 다중 스텝 예측.** 한 스텝이 아니라 **다음 5개 값**을 한 번에 예측하도록 `head`의 출력 차원을 5로 바꾸고, 타깃도 5개가 되도록 `make_windows`를 수정하세요.
-
-```python
-def make_windows_multi(series, win=40, horizon=5):
-    X, Y = [], []
-    # TODO: 입력은 series[i:i+win], 타깃은 series[i+win:i+win+horizon]
-    ...
-```
-
-**문제 4. 양방향 실험.** 이 예측 문제에 `bidirectional=True`를 적용하면 왜 부적절한지 설명하고, 대신 과거 정보만으로 예측이 이루어지는지 코드로 확인하세요.
-
-**제출물**: 완성된 `.py`와 문제 1~2 결과 표, 문제 3의 다중 스텝 예측 그래프, 문제 4의 3~5문장 분석.
-
-## 교수용 정답 및 해설 {.unnumbered}
-
-::: {.callout-note collapse="true" title="문제 1 정답 및 해설"}
-```python
-results = {}
-for kind in ["rnn", "lstm", "gru"]:
-    torch.manual_seed(42)
-    model = RecurrentRegressor(kind=kind).to(device)
-    # 동일한 loader와 epoch로 학습
-    results[kind] = test_mse
-print(results)
-```
-
-기본 RNN은 긴 시퀀스에서 기울기 소실·폭주가 발생하기 쉽습니다. LSTM과 GRU의 게이트는 과거 정보를 선택적으로 보존해 장기 의존성을 더 안정적으로 학습합니다.
-:::
-
-::: {.callout-note collapse="true" title="문제 2 정답 및 해설"}
-윈도 길이만 바꾸고 모델 크기, seed, epoch를 고정합니다. 10은 장기 패턴을 놓칠 수 있고 100은 더 많은 문맥을 제공하지만 계산량이 커지고 불필요한 과거까지 포함할 수 있습니다. 검증 MSE가 가장 낮은 길이를 선택합니다.
+입력 기간을 14일로 바꾸어 다음 날을 예측하는 데이터를 만드세요. 입력이 (표본 수, 14, 1)이고 첫 미니배치가 (batch, 14, 1)인지 출력한 뒤, 각 축의 의미를 설명하세요.
 
 ```python
-for win in [10, 40, 100]:
-    X, y = make_windows(series, win=win)
-    # 동일 조건으로 LSTM 학습 후 test_mse 기록
-```
-:::
+N_student = 14
 
-::: {.callout-note collapse="true" title="문제 3 정답 및 해설"}
-```python
-def make_windows(series, win=40, horizon=5):
-    xs, ys = [], []
-    for i in range(len(series) - win - horizon + 1):
-        xs.append(series[i:i+win])
-        ys.append(series[i+win:i+win+horizon])
-    return torch.stack(xs), torch.stack(ys)
+X14, y14, starts14 = # TODO: make_windows 호출
+train14, val14, test14 = # TODO: split_windows 호출
+loader14 = # TODO: batch_size=32인 DataLoader 생성
 
-self.head = nn.Linear(hidden_size, horizon)
+batch14_X, batch14_y = next(iter(loader14))
+print("전체 X:", X14.shape)
+print("배치 X:", batch14_X.shape)
+print("배치 y:", batch14_y.shape)
+
+assert batch14_X.ndim == 3
+assert batch14_X.shape[1] == N_student
+assert batch14_X.shape[2] == 1
 ```
 
-모델 출력과 target의 shape가 모두 `(batch, horizon)`인지 확인합니다. 다중 스텝 MSE는 horizon 전체의 오차를 평균합니다.
-:::
+### 문제 2. 다음 3일 정답 만들기
 
-::: {.callout-note collapse="true" title="문제 4 정답 및 해설"}
-양방향 RNN은 입력 윈도 내부를 양쪽 방향으로 읽습니다. 고정된 과거 윈도만 입력한다면 미래 target 자체를 보지는 않지만, 실시간 한 시점 출력처럼 각 위치에서 과거만 사용해야 하는 인과적 모델에는 부적절합니다.
+과거 30일을 입력하여 +1일, +2일, +3일을 정답으로 갖는 데이터를 만드세요. 입력 shape는 (표본 수, 30, 1), 정답 shape는 (표본 수, 3)이 되어야 합니다.
 
 ```python
-assert X.max_time_index < y.min_time_index
+horizon = 3
+
+X3, y3, starts3 = # TODO: window=30, horizon=3으로 생성
+train3, val3, test3 = # TODO: horizon=3으로 시간 순서 분할
+
+print("X3:", X3.shape)
+print("y3:", y3.shape)
+
+assert X3.shape[1:] == (30, 1)
+assert y3.shape[1] == 3
 ```
 
-데이터 분할도 시간 순서를 유지해야 하며 무작위 분할로 미래 구간이 훈련에 섞이지 않도록 합니다.
-:::
+### 문제 3. LSTM으로 +1·+2·+3일 동시 예측
+
+LSTM의 출력층이 미래 값 세 개를 한 번에 출력하도록 설정하고 학습하세요. 모델 출력과 정답의 shape가 모두 (batch, 3)인지 먼저 확인합니다.
+
+```python
+val3_loader = # TODO
+test3_loader = # TODO
+
+model3, history3, best_val3 = train_model(
+    kind="lstm",
+    train_set=# TODO,
+    val_loader=# TODO,
+    horizon=# TODO,
+    epochs=35,
+)
+
+sample_X3, sample_y3 = next(iter(test3_loader))
+sample_pred3 = model3(sample_X3)
+
+print("모델 출력:", sample_pred3.shape)
+print("정답:", sample_y3.shape)
+assert sample_pred3.shape == sample_y3.shape
+```
+
+### 문제 4. 예측 거리별 오차 계산
+
+3일 예측 결과를 역정규화하고 +1일, +2일, +3일의 MAE를 각각 계산하세요. 예측 거리가 멀어질수록 오차가 어떻게 달라지는지 결과에 근거해 설명합니다.
+
+```python
+_, pred3_z, actual3_z = collect_predictions(model3, test3_loader)
+
+pred3 = # TODO: 원래 단위로 역정규화
+actual3 = # TODO: 원래 단위로 역정규화
+mae_by_horizon = # TODO: 표본 축으로 절대오차 평균
+
+for step, mae in enumerate(mae_by_horizon, start=1):
+    print(f"+{step}일 MAE: {mae.item():.4f}")
+```
+
+### 문제 5. LSTM과 GRU의 3일 예측 비교
+
+같은 train3, val3, test3을 사용하여 LSTM과 GRU를 각각 학습하세요. 모델별 파라미터 수, 전체 테스트 MSE와 +1·+2·+3일 MAE를 표로 정리하고 다음 내용을 3~5문장으로 분석하세요.
+
+- 어느 모델의 전체 오차가 더 작은가?
+- 예측 거리에 따라 두 모델의 차이가 커지는가?
+- 성능과 파라미터 수를 함께 고려하면 어떤 모델을 선택하겠는가?
+
+```python
+comparison = {}
+
+for kind in ["lstm", "gru"]:
+    model, history, best_val = # TODO: 같은 조건으로 train_model 호출
+    test_mse = # TODO
+    parameters = # TODO
+    comparison[kind] = {
+        "parameters": parameters,
+        "test_mse": test_mse,
+    }
+
+print(comparison)
+```
 

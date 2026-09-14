@@ -1,9 +1,10 @@
 <script>
-// 인터랙티브 연습문제:
-//  1) 각 문항의 선택지(①②③④)를 체크박스처럼 클릭해 답을 고른다(문항당 하나, 라디오식).
-//  2) 맨 아래 '정답확인' 버튼을 누르면 전체 정답(✓)·내가 고른 오답(✗)이 표시되고
-//     각 문항의 해설(노트)이 펼쳐지며 점수가 요약된다. '다시 풀기'로 초기화.
-//  정답은 마크업의 .quiz-correct 로 식별(채점 전에는 화면에 노출되지 않음).
+// 인터랙티브 연습문제(객관식 + 서술형 통합 확인):
+//  1) 객관식: 각 문항의 선택지(①②③④)를 클릭해 답을 고른다(문항당 하나, 라디오식).
+//  2) 서술형(.quiz-written): 해설은 정답확인 전까지 숨긴다.
+//  3) 맨 아래 '정답확인' 버튼 하나로 전체를 한 번에 채점한다 — 객관식 정오답(✓/✗)이
+//     표시되고, 객관식·서술형의 모든 해설이 함께 펼쳐지며 점수가 요약된다.
+//     '다시 풀기'로 초기화(모든 노트 닫힘). 정답은 마크업의 .quiz-correct 로 식별.
 document.addEventListener('DOMContentLoaded', function () {
   var scope = document.querySelector('#quarto-document-content')
            || document.querySelector('main')
@@ -52,8 +53,16 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  // 정답확인 / 다시 풀기 버튼 + 점수
-  var anchor = groups[groups.length - 1].note || groups[groups.length - 1].opts.slice(-1)[0];
+  // 서술형(.quiz-written) 해설은 채점 전에는 닫아 둔다
+  var writtenNotes = Array.prototype.slice.call(scope.querySelectorAll('.quiz-written .callout-note'));
+  writtenNotes.forEach(function (n) {
+    openNote(n, false);
+  });
+
+  // 정답확인 / 다시 풀기 버튼 + 점수 — 페이지의 마지막 문항(객관식·서술형 통틀어) 뒤에 배치
+  var items = Array.prototype.slice.call(scope.querySelectorAll('.quiz-item, .quiz-written'));
+  var anchor = items.length ? items[items.length - 1]
+             : (groups[groups.length - 1].note || groups[groups.length - 1].opts.slice(-1)[0]);
   var bar = document.createElement('div');
   bar.className = 'quiz-actions';
   var btn = document.createElement('button');
@@ -67,6 +76,7 @@ document.addEventListener('DOMContentLoaded', function () {
   anchor.parentNode.insertBefore(bar, anchor.nextSibling);
 
   var total = groups.length;
+  var writtenN = writtenNotes.length;
   btn.addEventListener('click', function () {
     var correctN = 0, answered = 0;
     groups.forEach(function (g) {
@@ -79,9 +89,11 @@ document.addEventListener('DOMContentLoaded', function () {
       if (sel) { answered++; if (sel !== correct) sel.classList.add('is-wrong'); else correctN++; }
       openNote(g.note, true);
     });
+    writtenNotes.forEach(function (n) { openNote(n, true); });   // 서술형 해설도 함께 공개
     scope.classList.add('quiz-graded');
-    score.innerHTML = total + '문항 중 <span class="s-num">' + correctN + '</span>개 정답'
-                    + (answered < total ? ' · 미응답 ' + (total - answered) + '개' : '');
+    score.innerHTML = '객관식 ' + total + '문항 중 <span class="s-num">' + correctN + '</span>개 정답'
+                    + (answered < total ? ' · 미응답 ' + (total - answered) + '개' : '')
+                    + (writtenN ? ' · 서술형 ' + writtenN + '문항의 해설이 공개되었습니다' : '');
     btn.style.display = 'none'; reset.style.display = '';
     bar.scrollIntoView({ block: 'center', behavior: 'smooth' });
   });
@@ -92,6 +104,7 @@ document.addEventListener('DOMContentLoaded', function () {
       g.opts.forEach(function (o) { o.classList.remove('is-correct', 'is-wrong', 'selected'); });
       openNote(g.note, false);
     });
+    writtenNotes.forEach(function (n) { openNote(n, false); });
     score.textContent = ''; btn.style.display = ''; reset.style.display = 'none';
     scope.scrollIntoView({ block: 'start', behavior: 'smooth' });
   });

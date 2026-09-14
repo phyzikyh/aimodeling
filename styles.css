@@ -123,7 +123,7 @@ hr {
 /* 정답 표식은 채점 전에는 본문색 그대로(정답 노출 방지) */
 .quiz-correct { color: inherit; font-weight: inherit; background: none; }
 
-/* 채점 전에는 해설(노트)을 숨긴다(연습문제 페이지에서만) */
+/* 정답확인 전에는 객관식·서술형의 모든 해설을 숨긴다 */
 .quiz-active:not(.quiz-graded) .callout-note { display: none; }
 
 /* 선택지 = 체크박스형 클릭 항목 */
