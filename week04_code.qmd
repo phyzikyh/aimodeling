@@ -1,81 +1,265 @@
+---
+jupyter: python3
+execute:
+  enabled: true
+  eval: true
+  echo: true
+  output: true
+  error: false
+  cache: false
+  freeze: false
+---
+
 # 3. 코딩실습 {#sec-ch4-lab}
 
-## 예제 코드
+## 실습 준비
 
-`nn.TransformerEncoder`로 다변량 합성 시계열의 다음 값을 예측합니다.
+필요한 라이브러리를 가져오고 난수 시드와 실행 장치를 고정합니다. 배포 환경에서도 같은 흐름으로 실행할 수 있도록 CPU를 사용합니다.
 
-```python
-import torch, torch.nn as nn, torch.optim as optim, math
+```{python}
+#| echo: false
+#| output: false
+from io import BytesIO
+import matplotlib.pyplot as plt
+
+_warmup = plt.figure()
+plt.plot([], [])
+_warmup.savefig(BytesIO(), format="png")
+plt.close(_warmup)
+```
+
+```{python}
+import math
+import matplotlib.pyplot as plt
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
+plt.rcParams["font.family"] = "Malgun Gothic"
+plt.rcParams["axes.unicode_minus"] = False
+
+torch.manual_seed(0)
+device = torch.device("cpu")
+print("PyTorch:", torch.__version__)
+print("실행 장치:", device)
+```
+
+## 예제 1. 셀프 어텐션 한 걸음 직접 계산
+
+어텐션의 핵심 식 $\text{softmax}(QK^\top/\sqrt{d_k})\,V$을 작은 입력에 직접 적용해 봅니다. 각 위치(쿼리)가 모든 위치(키)와의 유사도로 가중치를 만들고, 그 가중치로 값을 가중합합니다. 어텐션 가중치는 **행마다 합이 1**인 확률 분포입니다.
+F.softmax(scores, dim=-1)에서 dim=-1은 각 query입장에서 모든 key 중 어디에 얼마나 집중하는지를 보는 것입니다.
+
+```{python}
+def attention(Q, K, V):
+    d_k = Q.size(-1)
+    scores = Q @ K.transpose(-2, -1) / d_k ** 0.5   # (T, T) 유사도 점수
+    weights = F.softmax(scores, dim=-1)             # 행별 확률 = 어텐션 가중치
+    return weights @ V, weights                     # (출력, 가중치)
+
+torch.manual_seed(0)
+T, d = 4, 8
+x = torch.randn(T, d)                                # 4개 위치, 각 8차원
+Wq, Wk, Wv = torch.randn(d, d), torch.randn(d, d), torch.randn(d, d)
+Q, K, V = x @ Wq, x @ Wk, x @ Wv                     # 쿼리·키·값
+
+out, weights = attention(Q, K, V)
+print("어텐션 가중치 (행 = 쿼리 위치):")
+print(weights.round(decimals=3))
+print("각 행의 합:", weights.sum(dim=1).round(decimals=3))
+assert torch.allclose(weights.sum(dim=1), torch.ones(T), atol=1e-5)
+print("출력 shape:", tuple(out.shape))
+```
+
+가중치 행렬의 각 행이 하나의 쿼리 위치가 다른 위치들을 얼마나 참고하는지를 나타내며, 행의 합이 정확히 1임을 `assert`로 확인했습니다.
+
+이번에는 **입력의 순서를 뒤섞어** 셀프 어텐션이 순서를 구분하는지 봅니다.
+
+```{python}
+perm = torch.tensor([2, 0, 3, 1])                    # 위치 순서를 뒤섞는다
+xp = x[perm]
+Qp, Kp, Vp = xp @ Wq, xp @ Wk, xp @ Wv
+out_perm, _ = attention(Qp, Kp, Vp)
+
+# 섞은 출력을 원래 순서로 되돌리면 원래 출력과 같은가?
+restored = out_perm[perm.argsort()]
+print("순서를 섞어도 값 자체는 동일한가:",
+      torch.allclose(out, restored, atol=1e-5))
+```
+
+입력을 섞으면 출력도 **같은 순서로 섞일 뿐 값 자체는 변하지 않습니다**. 즉 셀프 어텐션은 순서를 전혀 모르는 연산(순서 불변)입니다. 그래서 시계열·문장처럼 순서가 중요한 데이터에는 다음 예제의 **위치 인코딩**으로 순서 정보를 넣어 주어야 합니다.
+
+## 예제 2. 위치 인코딩 만들고 효과 보기
+
+사인·코사인 위치 인코딩은 각 위치마다 고유한 벡터를 만들어 입력에 더해 줍니다. 이렇게 하면 같은 값이라도 위치에 따라 다른 표현이 되어, 모델이 순서를 구분할 수 있습니다.
+
+```{python}
+def positional_encoding(length, d_model):
+    pe = torch.zeros(length, d_model)
+    pos = torch.arange(length).unsqueeze(1).float()
+    div = torch.exp(torch.arange(0, d_model, 2).float()
+                    * (-math.log(10000.0) / d_model))
+    pe[:, 0::2] = torch.sin(pos * div)   # 짝수 차원: 사인
+    pe[:, 1::2] = torch.cos(pos * div)   # 홀수 차원: 코사인
+    return pe
+
+pe = positional_encoding(48, 64)
+print("위치 인코딩 shape:", tuple(pe.shape))
+
+plt.figure(figsize=(6, 3))
+plt.imshow(pe.T, aspect="auto", cmap="RdBu")
+plt.xlabel("위치(시점)")
+plt.ylabel("차원")
+plt.title("사인·코사인 위치 인코딩")
+plt.colorbar(label="값")
+plt.tight_layout()
+plt.show()
+```
+
+각 위치가 서로 다른 인코딩을 갖는지 거리로 확인합니다.
+
+```{python}
+print("위치 0 vs 위치 1  차이(제곱합):",
+      (pe[0] - pe[1]).pow(2).sum().round(decimals=3).item())
+print("위치 0 vs 위치 20 차이(제곱합):",
+      (pe[0] - pe[20]).pow(2).sum().round(decimals=3).item())
+```
+
+가까운 위치끼리는 인코딩이 비슷하고 멀수록 달라집니다. 이 고유한 위치 신호를 입력에 더하면, 순서 불변이던 셀프 어텐션이 **시점의 앞뒤를 구분**할 수 있게 됩니다.
+
+## 예제 3. 트랜스포머로 시계열 예측
+
+이제 `nn.TransformerEncoder`로 다변량 합성 시계열의 다음 값을 예측합니다. 학습이 되는지 **에폭별 손실**로 확인하고, 마지막에 **단순 기준선**과 성능을 비교해 숫자를 해석합니다. CPU에서도 몇 초면 끝나도록 데이터와 에폭을 가볍게 잡았습니다.
+
+```{python}
 torch.manual_seed(0)
 
-# 다변량 합성 시계열: 3개 채널(서로 다른 주기)
-T = 4000
-t = torch.linspace(0, 120, T)
-ch = torch.stack([torch.sin(t), torch.sin(2*t+1), torch.cos(0.5*t)], dim=-1)
-ch = ch + 0.1*torch.randn_like(ch)          # (T, 3)
+# 1) 다변량 합성 시계열: 3채널(서로 다른 주기) + 잡음
+T = 1200
+t = torch.linspace(0, 60, T)
+series = torch.stack([torch.sin(t), torch.sin(2 * t + 1), torch.cos(0.5 * t)], dim=-1)
+series = series + 0.1 * torch.randn_like(series)     # (T, 3)
 
-L, H = 48, 1                                 # 과거 48시점 → 다음 1시점(채널0)
+# 2) 슬라이딩 윈도우: 과거 L시점 → 다음 1시점(채널 0)
+L = 32
 X, Y = [], []
-for i in range(T-L-H):
-    X.append(ch[i:i+L]); Y.append(ch[i+L:i+L+H, 0])
-X, Y = torch.stack(X), torch.stack(Y)        # (N,48,3), (N,1)
-n_tr = int(0.8*len(X))
-tl = DataLoader(TensorDataset(X[:n_tr], Y[:n_tr]), batch_size=64, shuffle=True)
-el = DataLoader(TensorDataset(X[n_tr:], Y[n_tr:]), batch_size=256)
+for i in range(T - L - 1):
+    X.append(series[i:i + L])
+    Y.append(series[i + L, 0:1])
+X, Y = torch.stack(X), torch.stack(Y)                 # (N, L, 3), (N, 1)
 
-class TSModel(nn.Module):
-    def __init__(self, n_feat=3, d=64, nhead=8, layers=2, horizon=1):
-        super().__init__()
-        self.proj = nn.Linear(n_feat, d)
-        enc = nn.TransformerEncoderLayer(d, nhead, batch_first=True,
-                                         dim_feedforward=128)
-        self.enc = nn.TransformerEncoder(enc, layers)
-        self.head = nn.Linear(d, horizon); self.d = d
-    def pe(self, T, dev):
-        pe = torch.zeros(T, self.d, device=dev)
-        pos = torch.arange(T, device=dev).unsqueeze(1).float()
-        div = torch.exp(torch.arange(0, self.d, 2, device=dev).float()
-                        * (-math.log(10000.0)/self.d))
-        pe[:,0::2]=torch.sin(pos*div); pe[:,1::2]=torch.cos(pos*div); return pe
-    def forward(self, x):
-        h = self.proj(x); h = h + self.pe(h.size(1), h.device)
-        return self.head(self.enc(h)[:, -1, :])
-
-model = TSModel().to(device)
-opt = optim.Adam(model.parameters(), lr=1e-3); crit = nn.MSELoss()
-for ep in range(15):
-    model.train()
-    for xb, yb in tl:
-        xb, yb = xb.to(device), yb.to(device)
-        opt.zero_grad(); loss = crit(model(xb), yb); loss.backward(); opt.step()
-model.eval(); se=n=0
-with torch.no_grad():
-    for xb, yb in el:
-        xb, yb = xb.to(device), yb.to(device)
-        se += ((model(xb)-yb)**2).sum().item(); n += len(xb)
-print("test MSE:", round(se/n, 4))
+# 3) 시간 순서대로 앞 80%는 학습, 뒤 20%는 평가(미래 정보 누수 방지)
+n_train = int(0.8 * len(X))
+X_tr, Y_tr = X[:n_train], Y[:n_train]
+X_te, Y_te = X[n_train:], Y[n_train:]
+print("학습 표본:", len(X_tr), " 평가 표본:", len(X_te))
 ```
+
+```{python}
+class TSTransformer(nn.Module):
+    def __init__(self, n_feat=3, d_model=32, nhead=4, layers=1):
+        super().__init__()
+        self.proj = nn.Linear(n_feat, d_model)                 # 실수 벡터 → 모델 차원
+        self.register_buffer("pe", positional_encoding(64, d_model))
+        layer = nn.TransformerEncoderLayer(d_model, nhead, dim_feedforward=64,
+                                           batch_first=True)
+        self.encoder = nn.TransformerEncoder(layer, layers)
+        self.head = nn.Linear(d_model, 1)                      # 마지막 시점 → 예측값
+    def forward(self, x):                                      # x: (B, L, n_feat)
+        h = self.proj(x) + self.pe[:x.size(1)]                 # 위치 인코딩 주입
+        h = self.encoder(h)
+        return self.head(h[:, -1, :])                          # (B, 1)
+
+torch.manual_seed(0)
+model = TSTransformer().to(device)
+optimizer = optim.Adam(model.parameters(), lr=1e-3)
+loss_fn = nn.MSELoss()
+loader = DataLoader(TensorDataset(X_tr, Y_tr), batch_size=64, shuffle=True)
+
+for epoch in range(1, 9):
+    model.train()
+    running = 0.0
+    for xb, yb in loader:
+        optimizer.zero_grad()
+        loss = loss_fn(model(xb), yb)
+        loss.backward()
+        optimizer.step()
+        running += loss.item() * len(xb)
+    print(f"epoch {epoch}  train MSE={running / len(X_tr):.4f}")
+```
+
+```{python}
+model.eval()
+with torch.no_grad():
+    model_mse = loss_fn(model(X_te), Y_te).item()
+
+# 기준선: '직전 시점의 채널0 값을 그대로 다음 값으로 예측'
+baseline_mse = loss_fn(X_te[:, -1, 0:1], Y_te).item()
+
+print(f"트랜스포머 테스트 MSE: {model_mse:.4f}")
+print(f"기준선(직전 값) MSE:   {baseline_mse:.4f}")
+```
+
+에폭이 진행되며 학습 손실이 줄어드는 것을 확인할 수 있습니다. 테스트 MSE는 단순히 "직전 값을 그대로 예측"하는 기준선과 비교해야 의미가 생깁니다. 기준선보다 낮으면 모델이 시점 간 관계를 학습한 것이고, 비슷하거나 높으면 구조·학습 설정을 다시 볼 필요가 있습니다.
 
 ## 실습문제
 
-**문제 1. 셀프 어텐션 직접 구현.** 아래 함수를 완성하고, 무작위 입력에 대해 어텐션 가중치 각 행의 합이 1임을 `assert`로 확인하세요.
+다음 세 문제의 `TODO`를 완성하고, 같은 난수 시드로 조건을 통제해 결과를 비교하세요. 문제는 예제 1·2·3의 개념을 각각 심화합니다.
+
+### 문제 1. 헤드 수 실험 (예제 3 심화)
+
+예제 3의 모델에서 `nhead`를 1, 2, 4로 바꿔 테스트 MSE를 비교하세요. `d_model`(=32)이 `nhead`로 나누어떨어져야 함에 유의합니다. 헤드 수가 성능에 어떤 영향을 주는지 한 문장으로 정리하세요.
 
 ```python
-import torch, torch.nn.functional as F
-def self_attention(X, Wq, Wk, Wv):
-    # X:(T,d), Wq/Wk/Wv:(d,d)
-    # TODO: Q,K,V 계산 → 스케일드 닷-프로덕트 → (출력, 가중치) 반환
-    ...
+def train_and_eval(nhead, epochs=8):
+    torch.manual_seed(0)
+    model = TSTransformer(nhead=nhead)
+    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+    loader = DataLoader(TensorDataset(X_tr, Y_tr), batch_size=64, shuffle=True)
+    for _ in range(epochs):
+        # TODO: 한 에폭 학습 (zero_grad → 순전파 → 손실 → backward → step)
+        pass
+    model.eval()
+    with torch.no_grad():
+        return loss_fn(model(X_te), Y_te).item()
+
+for nhead in [1, 2, 4]:
+    mse = # TODO: train_and_eval 호출
+    print(nhead, round(mse, 4))
 ```
 
-**문제 2. 헤드 수 실험.** 예제의 `nhead`를 1, 4, 8로 바꿔 테스트 MSE를 비교하세요. 단, `d_model`이 `nhead`로 나누어떨어져야 함에 유의합니다.
+### 문제 2. 위치 인코딩 제거 비교 (예제 2·3 종합)
 
-**문제 3. 위치 인코딩 제거.** `pe`를 더하지 않은 모델과 더한 모델의 성능을 비교하고, 위치 인코딩이 시계열 예측에 왜 중요한지 셀프 어텐션의 순서 불변성으로 설명하세요.
+`TSTransformer.forward`에서 위치 인코딩을 더하는 부분을 뺀 모델과 그대로 둔 모델의 테스트 MSE를 비교하세요. 결과를 예제 1에서 본 셀프 어텐션의 **순서 불변성**과 연결해 설명하세요.
 
-**문제 4. RNN과의 비교.** 3장에서 만든 LSTM 예측기와 이 트랜스포머의 테스트 MSE 및 학습 시간을 같은 데이터에서 비교하고, 3~5문장으로 장단점을 논하세요.
+```python
+class NoPETransformer(TSTransformer):
+    def forward(self, x):
+        h = # TODO: 위치 인코딩을 더하지 '않고' proj만 적용
+        h = self.encoder(h)
+        return self.head(h[:, -1, :])
 
-**제출물**: 완성된 `.py`와 문제 1의 검증 출력, 문제 2~3 결과 표, 문제 4의 비교 분석.
+# TODO: TSTransformer(있음)와 NoPETransformer(없음)를 같은 조건으로 학습·평가해 MSE 비교
+```
 
+### 문제 3. LSTM과 비교 (3장과 종합)
+
+같은 데이터(`X_tr, Y_tr, X_te, Y_te`)로 아래 LSTM 예측기를 학습해, 트랜스포머와 **테스트 MSE·학습 시간**을 비교하세요. 3~5문장으로 두 모델의 장단점을 논하세요(3장의 순환 신경망과 4장의 트랜스포머는 시계열을 다루는 서로 다른 두 축입니다).
+
+```python
+import time
+
+class LSTMPredictor(nn.Module):
+    def __init__(self, n_feat=3, hidden=32):
+        super().__init__()
+        self.lstm = nn.LSTM(n_feat, hidden, batch_first=True)
+        self.head = nn.Linear(hidden, 1)
+    def forward(self, x):
+        out, _ = self.lstm(x)
+        return self.head(out[:, -1, :])     # 마지막 시점의 은닉 상태로 예측
+
+# TODO: 예제 3과 같은 방식으로 LSTMPredictor를 8에폭 학습
+# TODO: time.time()으로 학습 시간을 재고, 테스트 MSE를 트랜스포머와 비교
+# TODO: 결과를 표로 정리하고 장단점을 3~5문장으로 서술
+```

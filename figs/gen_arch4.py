@@ -21,7 +21,7 @@ def fig_transformer():
     box(ax, ex, 4.95, W, 0.55, "Add & Norm", fc="#fff7cc", ec="#b7791f", fs=9)
     ax.add_patch(plt.Rectangle((ex-0.25, 2.0), W+0.5, 3.7, fill=False,
                  ec=EDGE_BLUE, lw=1.4, ls="--"))
-    ax.text(ex+W+0.05, 5.55, "N×", fontsize=11, color=EDGE_BLUE, fontweight="bold")
+    ax.text(ex+W+0.42, 5.35, "N×", fontsize=11, color=EDGE_BLUE, fontweight="bold", va="center")
     for y0, y1 in [(1.3, 2.2), (2.9, 3.15), (3.7, 4.0), (4.7, 4.95)]:
         arrow(ax, (ex+W/2, y0), (ex+W/2, y1), color=EDGE_GRAY, lw=1.6)
     ax.text(ex+W/2, 6.0, "인코더", fontsize=12, ha="center", fontweight="bold", color=EDGE_BLUE)
@@ -36,14 +36,16 @@ def fig_transformer():
     box(ax, dx, 6.75, W, 0.55, "Add & Norm", fc="#fff7cc", ec="#b7791f", fs=9)
     ax.add_patch(plt.Rectangle((dx-0.25, 2.0), W+0.5, 5.5, fill=False,
                  ec=EDGE_PURPLE, lw=1.4, ls="--"))
-    ax.text(dx+W+0.05, 7.35, "N×", fontsize=11, color=EDGE_PURPLE, fontweight="bold")
+    ax.text(dx+W+0.42, 7.15, "N×", fontsize=11, color=EDGE_PURPLE, fontweight="bold", va="center")
     for y0, y1 in [(1.3, 2.2), (2.9, 3.15), (3.7, 4.0), (4.7, 4.95), (5.5, 5.8), (6.5, 6.75)]:
         arrow(ax, (dx+W/2, y0), (dx+W/2, y1), color=EDGE_GRAY, lw=1.6)
-    box(ax, dx, 8.0, W, 0.62, "선형 + 소프트맥스", fc=BOX_RED, ec=EDGE_RED, fs=9.5)
-    arrow(ax, (dx+W/2, 7.3), (dx+W/2, 8.0), color=EDGE_GRAY, lw=1.6)
-    arrow(ax, (dx+W/2, 8.62), (dx+W/2, 9.3), color="#111", lw=1.8)
-    ax.text(dx+W/2, 9.6, "다음 토큰 확률", fontsize=10, ha="center", fontweight="bold")
-    ax.text(dx+W/2, 6.0, "디코더", fontsize=12, ha="center", fontweight="bold", color=EDGE_PURPLE)
+    box(ax, dx, 8.35, W, 0.62, "선형 + 소프트맥스", fc=BOX_RED, ec=EDGE_RED, fs=9.5)
+    arrow(ax, (dx+W/2, 7.3), (dx+W/2, 8.35), color=EDGE_GRAY, lw=1.6)
+    arrow(ax, (dx+W/2, 8.97), (dx+W/2, 9.6), color="#111", lw=1.8)
+    ax.text(dx+W/2, 9.9, "다음 토큰 확률", fontsize=10, ha="center", fontweight="bold")
+    # '디코더' 라벨: 스택 위 중앙엔 위로 향하는 화살표가 있으므로 왼쪽으로 치우쳐 배치(박스 겹침 방지)
+    ax.text(dx+0.15, 7.72, "디코더", fontsize=12, ha="left", va="center",
+            fontweight="bold", color=EDGE_PURPLE)
     # 인코더 출력 -> 디코더 cross-attention (키·값) : 박스 관통 없이 아래로 완만히
     arrow(ax, (ex+W+0.05, 4.9), (dx-0.05, 4.35), color=EDGE_ORANGE, lw=2.2, rad=0.18)
     ax.text(5.95, 4.95, "키·값", fontsize=9.5, color=EDGE_ORANGE, ha="center", fontweight="bold")

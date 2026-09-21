@@ -1,321 +1,379 @@
 # 2. 연습문제 {#sec-ch4-quiz}
 
 ::: {.quiz-item}
-**1.** 트랜스포머가 순환 신경망 대비 갖는 핵심 장점은?
+**1.** 길이가 100인 시퀀스에서 첫 위치의 정보를 마지막 위치로 전달할 때, 트랜스포머가 RNN보다 유리한 이유로 가장 적절한 것은?
 
-① 파라미터가 항상 적다
+① 시점마다 서로 다른 가중치를 사용하기 때문입니다.
 
-[② 전체 시퀀스 병렬 처리와 직접 연결]{.quiz-correct}
+② 입력 순서를 자동으로 알고 있기 때문입니다.
 
-③ 라벨 불필요
+[③ 셀프 어텐션이 두 위치를 직접 연결하고 모든 위치를 병렬 처리할 수 있기 때문입니다.]{.quiz-correct}
 
-④ 위치 정보 자동 내장
+④ 시퀀스 길이가 늘어도 계산량이 항상 일정하기 때문입니다.
 
-::: {.callout-note collapse="true" title="노트"}
-정답 ②.
+::: {.callout-note collapse="true" title="해설"}
+정답 ③. RNN에서는 첫 위치의 정보가 중간 은닉 상태들을 순서대로 통과해야 하므로 전달 경로가 시퀀스 길이에 비례해 길어집니다. 셀프 어텐션은 첫 위치와 마지막 위치의 관계를 한 번의 어텐션 연산으로 계산하며, 전체 위치의 계산도 동시에 수행할 수 있습니다. 다만 모든 위치 쌍을 비교하므로 계산량이 항상 일정한 것은 아닙니다.
 :::
 :::
 
 ::: {.quiz-item}
-**2.** 어텐션을 순환 신경망 위에 처음 도입해 정렬을 학습한 연구는?
+**2.** 셀프 어텐션과 인코더-디코더 어텐션의 쿼리·키·값 출처를 바르게 설명한 것은?
 
-① Vaswani 2017
+[① 셀프 어텐션은 Q·K·V가 같은 시퀀스에서 나오고, 인코더-디코더 어텐션은 Q가 디코더에서, K·V가 인코더에서 나옵니다.]{.quiz-correct}
 
-[② Bahdanau 2015]{.quiz-correct}
+② 셀프 어텐션은 Q만 입력에서 나오고 K·V는 위치 인코딩에서 나옵니다.
 
-③ Hochreiter 1997
+③ 인코더-디코더 어텐션은 Q·K·V가 모두 디코더 출력에서 나옵니다.
 
-④ He 2016
+④ 두 어텐션 모두 Q는 정답 라벨에서, K·V는 입력에서 나옵니다.
 
-::: {.callout-note collapse="true" title="노트"}
-정답 ②.
+::: {.callout-note collapse="true" title="해설"}
+정답 ①. 셀프 어텐션이라는 이름은 쿼리·키·값이 모두 같은 입력 시퀀스의 서로 다른 선형 투영에서 만들어진다는 뜻입니다. 교차 어텐션에서는 디코더가 필요한 정보를 질문하는 쿼리를 만들고, 인코더의 문맥 표현이 검색 대상인 키와 실제 내용인 값이 됩니다.
 :::
 :::
 
 ::: {.quiz-item}
-**3.** 셀프 어텐션에서 쿼리의 역할은?
+**3.** 다음 스케일드 닷-프로덕트 어텐션 코드에서 점수 행렬을 만들기 위한 빈칸으로 옳은 것은?
 
-① 전달할 내용
+```python
+scores = Q @ __________ / d_k**0.5
+```
 
-② 각 위치의 색인
+① `K.transpose(-1, 0)`
 
-[③ 현재 위치가 던지는 질문]{.quiz-correct}
+② `Q.transpose(-2, -1)`
 
-④ 위치 정보
+③ `V.transpose(-2, -1)`
 
-::: {.callout-note collapse="true" title="노트"}
-정답 ③.
+[④ `K.transpose(-2, -1)`]{.quiz-correct}
+
+::: {.callout-note collapse="true" title="해설"}
+정답 ④. 각 쿼리와 모든 키의 내적을 계산하려면 마지막 두 축을 바꾼 $K^\top$이 필요합니다. `Q`와 `K`가 `(B, T, d_k)`이면 `K.transpose(-2, -1)`은 `(B, d_k, T)`가 되고, 행렬 곱의 결과는 모든 위치 쌍의 점수를 담은 `(B, T, T)`가 됩니다.
 :::
 :::
 
 ::: {.quiz-item}
-**4.** 스케일드 닷-프로덕트 어텐션에서 $\sqrt{d_k}$로 나누는 이유는?
+**4.** 코드에서 어텐션 점수를 `d_k**0.5`로 나누지 않았더니 $d_k$가 클 때 학습이 불안정해졌습니다. 가장 적절한 설명은?
 
-① 확률 정규화
+① 값 벡터의 차원이 자동으로 줄어들기 때문입니다.
 
-[② 큰 내적으로 인한 소프트맥스 포화 방지]{.quiz-correct}
+[② 내적값이 커져 소프트맥스가 포화하고 기울기가 작아질 수 있기 때문입니다.]{.quiz-correct}
 
-③ 파라미터 절약
+③ 마스크가 모든 위치를 가리기 때문입니다.
 
-④ 마스킹
+④ 각 행의 가중치 합이 1보다 커지기 때문입니다.
 
-::: {.callout-note collapse="true" title="노트"}
-정답 ②.
+::: {.callout-note collapse="true" title="해설"}
+정답 ②. 쿼리와 키 성분의 분산이 1이라고 보면 내적의 분산은 $d_k$에 비례합니다. 큰 점수가 소프트맥스에 들어가면 한 위치에 확률이 몰리는 포화가 발생하고 기울기가 거의 0이 될 수 있습니다. $\sqrt{d_k}$로 나누면 점수의 전형적인 크기를 안정화할 수 있습니다.
 :::
 :::
 
 ::: {.quiz-item}
-**5.** 어텐션 가중치 $\alpha_{ij}$의 한 행의 합은?
+**5.** 다음 코드에서 각 쿼리 위치가 모든 키 위치에 부여한 가중치의 합을 1로 만들려면 빈칸에 들어갈 값은?
 
-① 0
+```python
+weights = F.softmax(scores, dim=__________)
+```
 
-[② 1]{.quiz-correct}
+[① `-1`]{.quiz-correct}
 
-③ d_k
+② `0`
 
-④ T
+③ `1`
 
-::: {.callout-note collapse="true" title="노트"}
-정답 ②. 소프트맥스 결과이므로 1입니다.
+④ `-2`
+
+::: {.callout-note collapse="true" title="해설"}
+정답 ①. 점수 텐서 `(B, T_query, T_key)`의 마지막 축은 한 쿼리가 비교하는 모든 키 위치입니다. 따라서 `dim=-1`로 소프트맥스를 적용해야 각 쿼리 행의 가중치 합이 1이 됩니다. 배치 축이나 쿼리 축에 적용하면 질문마다 키를 선택하는 확률 분포가 되지 않습니다.
 :::
 :::
 
 ::: {.quiz-item}
-**6.** $QK^\top$ 행렬의 크기는? (시퀀스 길이 T)
+**6.** `Q`, `K`, `V`의 모양이 모두 `(2, 5, 16)`일 때 다음 코드의 `scores`와 `out` 모양은?
 
-① (T, d_k)
+```python
+scores = Q @ K.transpose(-2, -1)
+weights = scores.softmax(dim=-1)
+out = weights @ V
+```
 
-② (d_k, d_k)
+① `scores: (2, 16, 16)`, `out: (2, 5, 5)`
 
-[③ (T, T)]{.quiz-correct}
+② `scores: (5, 5)`, `out: (2, 16, 5)`
 
-④ (1, T)
+[③ `scores: (2, 5, 5)`, `out: (2, 5, 16)`]{.quiz-correct}
 
-::: {.callout-note collapse="true" title="노트"}
-정답 ③.
+④ `scores: (2, 5, 16)`, `out: (2, 16, 16)`
+
+::: {.callout-note collapse="true" title="해설"}
+정답 ③. `Q @ Kᵀ`는 각 배치에서 5개 쿼리와 5개 키의 모든 조합을 계산하므로 `(2, 5, 5)`가 됩니다. 이 가중치 행렬에 `(2, 5, 16)`인 `V`를 곱하면 각 쿼리마다 16차원 값 벡터의 가중합을 얻어 `(2, 5, 16)`이 됩니다.
 :::
 :::
 
 ::: {.quiz-item}
-**7.** 멀티 헤드 어텐션을 쓰는 이유는?
+**7.** 다음 마스킹 코드의 빈칸에 들어갈 값으로 옳은 것은?
 
-① 계산 절약
+```python
+scores = scores.masked_fill(mask == 0, __________)
+weights = F.softmax(scores, dim=-1)
+```
 
-[② 서로 다른 부분 공간의 다양한 관계 병렬 학습]{.quiz-correct}
+① `0.0`
 
-③ 위치 인코딩 대체
+[② `float("-inf")`]{.quiz-correct}
 
-④ 마스킹 강화
+③ `1.0`
 
-::: {.callout-note collapse="true" title="노트"}
-정답 ②.
+④ `float("inf")`
+
+::: {.callout-note collapse="true" title="해설"}
+정답 ②. 참조를 금지할 위치의 점수를 $-\infty$로 바꾸면 소프트맥스에서 $\exp(-\infty)=0$이 되어 해당 위치의 가중치가 0이 됩니다. 점수를 0으로 바꾸면 다른 점수와 비교해 양의 확률을 받을 수 있으므로 완전한 차단이 되지 않습니다.
 :::
 :::
 
 ::: {.quiz-item}
-**8.** $d_{\text{model}}=64$, 헤드 8개일 때 각 헤드의 차원 $d_k$는?
+**8.** `d_model=96`인 멀티헤드 어텐션에서 각 헤드 차원 `d_k`를 16으로 만들려면 `nhead`는 얼마여야 합니까?
 
-[① 8]{.quiz-correct}
+① 3
 
-② 16
+② 4
 
-③ 32
+③ 8
 
-④ 64
+[④ 6]{.quiz-correct}
 
-::: {.callout-note collapse="true" title="노트"}
-정답 ①. 64/8 = 8.
+::: {.callout-note collapse="true" title="해설"}
+정답 ④. 일반적인 멀티헤드 어텐션에서 각 헤드 차원은 $d_k=d_{model}/h$입니다. $96/h=16$이므로 헤드 수 $h$는 6입니다. `d_model`은 `nhead`로 나누어떨어져야 각 헤드가 같은 크기의 부분 공간을 사용할 수 있습니다.
 :::
 :::
 
 ::: {.quiz-item}
-**9.** 멀티 헤드 출력을 이어 붙인 뒤 거치는 것은?
+**9.** 입력 `x`의 모양이 `(B, T, 64)`이고 헤드 수가 8일 때, 다음 `split` 함수가 반환하는 텐서의 모양은?
 
-① 소프트맥스
+```python
+def split(t):
+    return t.view(B, T, 8, 8).transpose(1, 2)
+```
 
-[② 선형 투영 $W^O$]{.quiz-correct}
+① `(B, T, 8, 8)`
 
-③ 드롭아웃만
+[② `(B, 8, T, 8)`]{.quiz-correct}
 
-④ 위치 인코딩
+③ `(8, B, T, 8)`
 
-::: {.callout-note collapse="true" title="노트"}
-정답 ②.
+④ `(B, 8, 8, T)`
+
+::: {.callout-note collapse="true" title="해설"}
+정답 ②. `view(B, T, 8, 8)`은 모델 차원 64를 헤드 수 8과 헤드 차원 8로 나눕니다. 이어서 `transpose(1, 2)`가 시퀀스 축과 헤드 축을 교환하므로 `(B, 8, T, 8)`이 됩니다. 이 배치는 각 헤드가 독립적으로 `(T, T)` 어텐션을 계산하기에 적합합니다.
 :::
 :::
 
 ::: {.quiz-item}
-**10.** 셀프 어텐션이 순서 정보를 스스로 담지 못하는 성질은?
+**10.** 각 헤드의 출력 `(A @ V)`을 다시 `(B, T, d_model)`로 합치기 위한 빈칸으로 옳은 것은?
 
-① 인과성
+```python
+out = (A @ V).transpose(1, 2).__________.view(B, T, -1)
+```
 
-[② 순서 불변]{.quiz-correct}
+① `detach()`
 
-③ 정상성
+② `squeeze()`
 
-④ 볼록성
+③ `flatten(0)`
 
-::: {.callout-note collapse="true" title="노트"}
-정답 ②.
+[④ `contiguous()`]{.quiz-correct}
+
+::: {.callout-note collapse="true" title="해설"}
+정답 ④. `transpose`는 축의 해석만 바꾸므로 메모리 배치가 연속적이지 않을 수 있습니다. `contiguous()`는 현재 축 순서에 맞는 연속 메모리를 만든 뒤 `view(B, T, -1)`로 헤드 차원을 안전하게 합칠 수 있게 합니다. 이 결과에 최종 선형 투영 $W^O$를 적용합니다.
 :::
 :::
 
 ::: {.quiz-item}
-**11.** 사인·코사인 위치 인코딩의 값 범위는?
+**11.** 트랜스포머 인코더 블록에서 어텐션과 위치별 피드포워드의 역할을 바르게 연결한 것은?
 
-① [0, 1]
+[① 어텐션은 위치 간 정보를 섞고, 피드포워드는 각 위치의 표현을 같은 MLP로 비선형 변환합니다.]{.quiz-correct}
 
-[② [-1, 1]]{.quiz-correct}
+② 어텐션은 각 위치를 독립적으로 처리하고, 피드포워드는 모든 위치 쌍을 비교합니다.
 
-③ [0, ∞)
+③ 어텐션은 위치 인코딩을 만들고, 피드포워드는 인과 마스크를 만듭니다.
 
-④ 정수
+④ 두 서브층 모두 시퀀스 순서대로 한 시점씩 계산합니다.
 
-::: {.callout-note collapse="true" title="노트"}
-정답 ②.
+::: {.callout-note collapse="true" title="해설"}
+정답 ①. 셀프 어텐션은 다른 위치의 값들을 가중합해 위치 사이의 정보를 교환합니다. 위치별 피드포워드는 각 위치에 동일한 두 층 MLP를 독립적으로 적용해 표현을 비선형으로 가공합니다. 각 서브층을 감싸는 잔차 연결과 층 정규화는 깊은 모델의 학습을 안정화합니다.
 :::
 :::
 
 ::: {.quiz-item}
-**12.** 사인·코사인 위치 인코딩의 장점으로 옳은 것은?
+**12.** 입력 텐서 모양을 `(배치, 길이, 모델 차원)`으로 사용하려고 합니다. 빈칸에 들어갈 설정은?
 
-① 데이터 적응성 최고
+```python
+layer = nn.TransformerEncoderLayer(
+    d_model=64,
+    nhead=8,
+    dim_feedforward=256,
+    __________
+)
+```
 
-[② 학습 파라미터 없음·긴 길이 외삽 가능]{.quiz-correct}
+① `norm_first=True`
 
-③ 구현 불가
+② `dropout=0.0`
 
-④ 순서 무시
+[③ `batch_first=True`]{.quiz-correct}
 
-::: {.callout-note collapse="true" title="노트"}
-정답 ②.
+④ `bias=False`
+
+::: {.callout-note collapse="true" title="해설"}
+정답 ③. `batch_first=True`는 입력과 출력을 `(B, T, d_model)` 순서로 사용하도록 지정합니다. `norm_first`는 층 정규화를 서브층 앞에 둘지 결정하고, `dropout`과 `bias`는 정규화 순서나 축 배치와 직접 관련이 없습니다.
 :::
 :::
 
 ::: {.quiz-item}
-**13.** 학습 가능한 위치 인코딩의 단점은?
+**13.** 사인·코사인 위치 인코딩 구현에서 홀수 차원에 들어갈 코드로 옳은 것은?
 
-① 파라미터 없음
+```python
+pe[:, 0::2] = torch.sin(pos * div)
+pe[:, 1::2] = __________
+```
 
-[② 학습 때 본 최대 길이 초과 시 외삽 취약]{.quiz-correct}
+① `torch.sin(pos + div)`
 
-③ 값이 무한
+② `torch.cos(pos + div)`
 
-④ 순서 무시
+③ `torch.sin(pos * div)`
 
-::: {.callout-note collapse="true" title="노트"}
-정답 ②.
+[④ `torch.cos(pos * div)`]{.quiz-correct}
+
+::: {.callout-note collapse="true" title="해설"}
+정답 ④. 원래 트랜스포머의 고정 위치 인코딩은 짝수 차원에 사인, 홀수 차원에 코사인을 사용하고 차원별로 서로 다른 주파수를 적용합니다. 학습 파라미터 없이 각 위치에 구별되는 패턴을 부여하며, 학습 때보다 긴 위치에도 수식을 적용할 수 있습니다.
 :::
 :::
 
 ::: {.quiz-item}
-**14.** 인코더의 셀프 어텐션 방향성은?
+**14.** 시계열 트랜스포머의 `forward`에서 다음과 같이 위치 인코딩을 제거했습니다. 가장 직접적으로 예상되는 문제는?
 
-① 순방향만
+```python
+h = self.proj(x)
+h = self.encoder(h)
+```
 
-② 역방향만
+① 입력 특성 수가 자동으로 1로 줄어듭니다.
 
-[③ 양방향(전체 문맥)]{.quiz-correct}
+[② 모델이 동일한 값의 위치와 시간 순서를 구분하기 어려워집니다.]{.quiz-correct}
 
-④ 없음
+③ 셀프 어텐션 가중치의 행 합이 0이 됩니다.
 
-::: {.callout-note collapse="true" title="노트"}
-정답 ③.
+④ 인코더가 인과 마스크를 자동으로 생성합니다.
+
+::: {.callout-note collapse="true" title="해설"}
+정답 ②. 위치 정보가 없으면 셀프 어텐션은 입력 순서를 바꿨을 때 출력도 같은 방식으로 바뀌는 순열 등변적 연산입니다. 내용이 같은 입력이 서로 다른 시점에 놓였다는 사실을 자체적으로 알 수 없으므로, 문장이나 시계열의 앞뒤 관계를 학습하려면 위치 인코딩을 더해야 합니다.
 :::
 :::
 
 ::: {.quiz-item}
-**15.** 디코더의 마스크드 셀프 어텐션이 강제하는 것은?
+**15.** 길이 4의 시퀀스에 `generate_square_subsequent_mask(4)`를 적용했습니다. 0부터 세었을 때 쿼리 위치 2가 참조할 수 있는 키 위치는?
 
-① 병렬성
+① 위치 0만
 
-[② 인과성(미래 차단)]{.quiz-correct}
+② 위치 2와 3
 
-③ 정상성
+[③ 위치 0, 1, 2]{.quiz-correct}
 
-④ 대칭성
+④ 위치 0, 1, 2, 3 모두
 
-::: {.callout-note collapse="true" title="노트"}
-정답 ②.
+::: {.callout-note collapse="true" title="해설"}
+정답 ③. 인과 마스크는 현재 위치보다 뒤에 있는 미래 위치를 가립니다. 따라서 위치 2는 과거인 0과 1, 그리고 자기 자신인 2를 볼 수 있지만 미래인 위치 3은 볼 수 없습니다. 이 제약이 디코더가 생성 시점에 아직 나오지 않은 정답을 미리 참조하는 것을 막습니다.
 :::
 :::
 
 ::: {.quiz-item}
-**16.** 마스킹은 미래 위치의 점수를 어떤 값으로 만드는가?
+**16.** 번역용 인코더-디코더 트랜스포머의 교차 어텐션을 구현할 때 올바른 입력 연결은?
 
-① 0
+[① `Q=decoder_state`, `K=encoder_output`, `V=encoder_output`]{.quiz-correct}
 
-② 1
+② `Q=encoder_output`, `K=decoder_state`, `V=decoder_state`
 
-[③ $-\infty$]{.quiz-correct}
+③ `Q=position_encoding`, `K=label`, `V=label`
 
-④ 평균
+④ `Q=decoder_state`, `K=decoder_state`, `V=decoder_state`
 
-::: {.callout-note collapse="true" title="노트"}
-정답 ③. 소프트맥스 후 가중치가 0이 됩니다.
+::: {.callout-note collapse="true" title="해설"}
+정답 ①. 디코더의 현재 상태가 입력 문장에서 필요한 정보를 묻는 쿼리가 됩니다. 인코더가 만든 입력 문맥 표현은 검색을 위한 키이자 가져올 내용인 값으로 사용됩니다. ④는 디코더 내부의 셀프 어텐션에 해당하며 교차 어텐션이 아닙니다.
 :::
 :::
 
 ::: {.quiz-item}
-**17.** 인코더-디코더 어텐션에서 키·값의 출처는?
+**17.** 시점마다 3개의 연속형 특성을 가진 시계열을 `d_model=64`인 트랜스포머에 입력하려고 합니다. 빈칸에 들어갈 층은?
 
-① 디코더 출력
+```python
+self.input_proj = __________
+```
 
-[② 인코더 출력]{.quiz-correct}
+① `nn.Linear(64, 3)`
 
-③ 위치 인코딩
+② `nn.Embedding(3, 64)`
 
-④ 라벨
+[③ `nn.Linear(3, 64)`]{.quiz-correct}
 
-::: {.callout-note collapse="true" title="노트"}
-정답 ②.
+④ `nn.LayerNorm(3, 64)`
+
+::: {.callout-note collapse="true" title="해설"}
+정답 ③. 시계열의 각 시점은 세 개의 실수 특성으로 이루어진 벡터이므로 선형층으로 3차원을 모델 차원 64로 사상합니다. `nn.Embedding`은 정수 토큰 인덱스를 벡터로 바꿀 때 주로 사용하며, 이 연속형 입력을 직접 처리하는 층과는 목적이 다릅니다.
 :::
 :::
 
 ::: {.quiz-item}
-**18.** 긴 시계열에서 표준 셀프 어텐션의 계산 복잡도는?
+**18.** 다음 모델에서 `x.shape == (8, 48, 3)`이고 `horizon=5`입니다. `model(x)`의 출력 모양은?
 
-① $O(L)$
+```python
+h = self.input_proj(x)
+h = h + self._pe(h.size(1), h.device)
+h = self.encoder(h)
+return self.head(h[:, -1, :])
+```
 
-② $O(L\log L)$
+① `(8, 48, 5)`
 
-[③ $O(L^2)$]{.quiz-correct}
+② `(8, 48, 64)`
 
-④ $O(1)$
+③ `(8, 64)`
 
-::: {.callout-note collapse="true" title="노트"}
-정답 ③.
+[④ `(8, 5)`]{.quiz-correct}
+
+::: {.callout-note collapse="true" title="해설"}
+정답 ④. 인코더 출력은 `(8, 48, d_model)`이고 `h[:, -1, :]`는 각 배치의 마지막 시점 표현만 선택해 `(8, d_model)`을 만듭니다. `self.head = nn.Linear(d_model, horizon)`이 이를 미래 예측 지평 5개 값으로 변환하므로 최종 모양은 `(8, 5)`입니다.
 :::
 :::
 
 ::: {.quiz-item}
-**19.** 시계열을 추세·계절 성분으로 분해해 어텐션과 결합한 모델은?
+**19.** 시계열 슬라이딩 윈도 데이터 `X`, `Y`를 학습·평가용으로 나누는 코드로 가장 적절한 것은?
 
-① Informer
+[① `X_tr, X_te = X[:n_train], X[n_train:]`처럼 시간 순서를 유지해 앞부분으로 학습하고 뒷부분으로 평가합니다.]{.quiz-correct}
 
-[② Autoformer]{.quiz-correct}
+② 전체 윈도를 무작위로 섞은 뒤 인접한 윈도를 학습과 평가에 나눕니다.
 
-③ PatchTST
+③ 평가 구간을 먼저 학습한 뒤 앞 시점에서 성능을 측정합니다.
 
-④ BERT
+④ 모든 데이터를 학습에 사용하고 같은 데이터로 평가합니다.
 
-::: {.callout-note collapse="true" title="노트"}
-정답 ②.
+::: {.callout-note collapse="true" title="해설"}
+정답 ①. 시계열 예측은 과거로 학습해 미래를 예측하는 상황을 모사해야 하므로 시간 순서를 보존해 분할해야 합니다. 겹치는 윈도를 무작위로 나누면 매우 비슷하거나 같은 시점의 정보가 학습과 평가 양쪽에 들어가 미래 정보 누수가 발생할 수 있습니다. 학습용 `DataLoader` 안에서 미니배치 순서를 섞는 것과 데이터 분할 자체를 무작위화하는 것은 구분해야 합니다.
 :::
 :::
 
 ::: {.quiz-item}
-**20.** 복잡한 트랜스포머가 단순 선형 모델보다 항상 낫지는 않음을 지적한 연구는?
+**20.** 트랜스포머의 테스트 MSE가 0.024이고 “직전 값을 다음 값으로 예측”한 기준선 MSE가 0.018입니다. 이 결과의 해석으로 가장 적절한 것은?
 
-① Informer
+① 트랜스포머의 파라미터가 많으므로 성능이 더 좋다고 판단합니다.
 
-[② DLinear(Are Transformers Effective?)]{.quiz-correct}
+[② 현재 설정의 트랜스포머는 단순 기준선보다 성능이 낮으므로 구조와 학습 설정을 재검토합니다.]{.quiz-correct}
 
-③ TFT
+③ 두 MSE가 모두 1보다 작으므로 두 모델의 성능은 같습니다.
 
-④ RoFormer
+④ 학습 MSE를 알 수 없으므로 테스트 MSE끼리는 비교할 수 없습니다.
 
-::: {.callout-note collapse="true" title="노트"}
-정답 ②.
+::: {.callout-note collapse="true" title="해설"}
+정답 ②. MSE는 낮을수록 좋으므로 0.024인 트랜스포머가 0.018인 단순 기준선보다 현재 평가에서는 불리합니다. 복잡한 모델이라는 이유만으로 유용하다고 판단할 수 없으며, 위치 인코딩·헤드 수·학습률·데이터 규모 등을 점검하거나 더 단순한 모델을 선택해야 합니다. 기준선 비교는 모델이 추가 복잡성만큼 실제 예측 가치를 제공하는지 확인하는 최소 조건입니다.
 :::
 :::
