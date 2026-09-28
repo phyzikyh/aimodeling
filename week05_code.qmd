@@ -119,3 +119,30 @@ def build_resnet(strategy: str, n_classes=10):
 
 **제출물**: 완성된 `.py` 파일과 문제 1~4의 결과 표·그래프, 그리고 전이학습 두 전략의 정확도·학습시간 비교와 3~5문장 분석.
 
+## 참고: YOLOv8로 객체탐지 맛보기
+
+앞의 실습이 이미지 **분류**였다면, 여기서는 **객체탐지**를 `ultralytics`의 YOLOv8로 몇 줄 만에 체험합니다. 사전학습 모델을 불러와 바로 검출하고, 자신의 데이터로 미세조정(전이학습)까지 할 수 있습니다.
+
+```python
+# 설치: pip install ultralytics
+from ultralytics import YOLO
+
+# 1) COCO(80개 클래스)로 사전학습된 YOLOv8 nano 모델
+model = YOLO("yolov8n.pt")           # n → s → m → l → x 순으로 크고 정확
+
+# 2) 추론: 이미지/폴더/영상 경로를 주면 물체를 검출
+results = model("https://ultralytics.com/images/bus.jpg")
+results[0].show()                    # 상자·클래스·확신도 시각화
+for box in results[0].boxes:
+    cls = model.names[int(box.cls)]  # 클래스 이름
+    conf = float(box.conf)           # 확신도
+    xyxy = box.xyxy[0].tolist()      # 상자 좌표 [x1, y1, x2, y2]
+    print(cls, round(conf, 2), xyxy)
+
+# 3) 전이학습(미세조정): 내 데이터셋으로 재학습
+#    data.yaml에 train/val 경로와 클래스 이름을 적어 둔다
+model.train(data="data.yaml", epochs=50, imgsz=640)
+```
+
+**심화 문제(선택).** 사전학습 YOLOv8로 임의의 사진 3장을 검출해 결과를 캡처하고, 검출된 클래스·확신도를 표로 정리하세요. 여력이 되면 소규모 데이터셋(예: 클래스 1~2개, 사진 수십 장)에 `data.yaml`을 만들어 `train`으로 미세조정한 뒤, 사전학습 모델과 검출 결과가 어떻게 달라지는지 3~5문장으로 비교합니다.
+
