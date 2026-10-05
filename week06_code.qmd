@@ -1,0 +1,950 @@
+---
+jupyter: python3
+execute:
+  enabled: true
+  eval: true
+  echo: true
+  output: true
+  error: false
+  cache: false
+  freeze: false
+---
+
+# 3. 코딩실습 {#sec-ch6-lab}
+
+## 실습 준비
+
+```{python}
+#| echo: false
+#| output: false
+from io import BytesIO
+import matplotlib.pyplot as plt
+
+_warmup_figure = plt.figure()
+plt.plot([], [])
+_warmup_figure.savefig(BytesIO(), format="png")
+plt.close(_warmup_figure)
+```
+
+```{python}
+import time
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+from torch.utils.data import DataLoader, Subset
+from torchvision import datasets, models, transforms
+from torchvision.ops import batched_nms, box_convert, box_iou, nms
+
+torch.manual_seed(42)
+device = torch.device("cpu")
+
+print("PyTorch:", torch.__version__)
+print("실행 장치:", device)
+```
+
+## 예제 1. 사전학습 모델에 맞는 입력 만들기
+
+사전학습 모델은 학습될 때와 같은 방식으로 전처리한 입력을 받아야 합니다. 5주차와 같은 EuroSAT 데이터를 쓰되, 정규화 값만 ImageNet의 채널별 평균과 표준편차로 바꿉니다.
+
+```{python}
+imagenet_mean = (0.485, 0.456, 0.406)
+imagenet_std = (0.229, 0.224, 0.225)
+image_size = 64
+
+transfer_transform = transforms.Compose([
+    transforms.Resize((image_size, image_size)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=imagenet_mean, std=imagenet_std),
+])
+
+base_dataset = datasets.EuroSAT(
+    root="data",
+    transform=transfer_transform,
+    download=True,
+)
+
+
+def balanced_split_indices(
+    targets, n_train=250, n_val=50, n_test=50, seed=42
+):
+    targets = torch.as_tensor(targets)
+    generator = torch.Generator().manual_seed(seed)
+    train_indices, val_indices, test_indices = [], [], []
+
+    for class_id in targets.unique(sorted=True):
+        class_indices = torch.where(targets == class_id)[0]
+        order = torch.randperm(len(class_indices), generator=generator)
+        shuffled = class_indices[order]
+
+        required = n_train + n_val + n_test
+        train_indices.extend(shuffled[:n_train].tolist())
+        val_indices.extend(shuffled[n_train:n_train + n_val].tolist())
+        test_indices.extend(shuffled[n_train + n_val:required].tolist())
+
+    return train_indices, val_indices, test_indices
+
+
+train_indices, val_indices, test_indices = balanced_split_indices(
+    base_dataset.targets
+)
+
+train_loader = DataLoader(
+    Subset(base_dataset, train_indices),
+    batch_size=64,
+    shuffle=True,
+    num_workers=0,
+    generator=torch.Generator().manual_seed(42),
+)
+val_loader = DataLoader(
+    Subset(base_dataset, val_indices), batch_size=128, shuffle=False
+)
+test_loader = DataLoader(
+    Subset(base_dataset, test_indices), batch_size=128, shuffle=False
+)
+
+images, labels = next(iter(train_loader))
+print("훈련/검증/테스트:", len(train_loader.dataset),
+      len(val_loader.dataset), len(test_loader.dataset))
+print("배치 이미지 shape:", tuple(images.shape))
+print("채널별 평균:", [round(v, 2) for v in images.mean(dim=(0, 2, 3)).tolist()])
+```
+
+**코드 설명**
+
+- 분할 함수는 5주차 예제 2와 같습니다. 같은 난수 시드를 쓰므로 훈련·검증·테스트에 들어가는 영상이 5주차와 동일하여, 직접 설계한 CNN과 전이학습의 결과를 공정하게 비교할 수 있습니다.
+- 정규화 값 `imagenet_mean`, `imagenet_std`는 torchvision 사전학습 가중치가 ImageNet에서 학습될 때 사용한 값입니다. 5주차의 `(0.5, 0.5)` 대신 이 값을 쓰는 이유는, 사전학습된 첫 합성곱층이 그 분포의 입력에 맞게 학습되어 있기 때문입니다.
+- 이론의 `weights.transforms()`는 영상을 256으로 키운 뒤 224로 자르는 ImageNet용 전처리를 돌려줍니다. 이 실습은 CPU에서 빠르게 돌리기 위해 64×64로 줄이고 정규화 값만 그대로 가져왔습니다.
+- 마지막 줄의 채널별 평균은 정확히 0은 아닙니다. ImageNet의 평균을 기준으로 빼므로, 위성영상처럼 ImageNet보다 어두운 영상은 음수 쪽으로 치우친 값이 나옵니다. 값이 수백처럼 크면 `ToTensor()`나 정규화가 빠진 것이므로, 대략 -2~2 범위인지 확인하는 점검입니다.
+
+## 예제 2. 특징 추출 모델 만들기 (코드 6-1)
+
+ResNet-18의 모든 층을 동결하고 마지막 분류기만 10개 클래스에 맞게 교체합니다. 학습 대상이 실제로 `fc`뿐인지 파라미터 수로 확인합니다.
+
+```{python}
+def build_feature_extractor(num_classes):
+    weights = models.ResNet18_Weights.DEFAULT
+    model = models.resnet18(weights=weights)
+
+    for p in model.parameters():
+        p.requires_grad = False
+
+    model.fc = nn.Linear(model.fc.in_features, num_classes)
+    return model
+
+
+def count_parameters(model):
+    total = sum(p.numel() for p in model.parameters())
+    trainable = sum(
+        p.numel() for p in model.parameters() if p.requires_grad
+    )
+    return total, trainable
+
+
+n_classes = len(base_dataset.classes)
+model = build_feature_extractor(n_classes)
+
+total, trainable = count_parameters(model)
+print(f"전체 {total:,}개 중 학습 대상 {trainable:,}개")
+print("fc:", model.fc)
+print("layer4 첫 합성곱 requires_grad:",
+      model.layer4[0].conv1.weight.requires_grad)
+print("fc 가중치 requires_grad:", model.fc.weight.requires_grad)
+```
+
+**코드 설명**
+
+- `models.ResNet18_Weights.DEFAULT`는 ImageNet 사전학습 가중치를 가리키며, 처음 실행하면 가중치 파일을 내려받아 캐시합니다.
+- 모든 파라미터의 `requires_grad`를 `False`로 만든 뒤에 `fc`를 교체했습니다. 새로 만든 `nn.Linear`는 기본값이 `True`이므로 `fc`만 학습 대상이 됩니다. 순서를 바꾸면 `fc`까지 동결되어 아무것도 학습되지 않습니다.
+- 학습 대상은 `fc`의 가중치 512×10과 편향 10을 합한 5,130개입니다. 전체 약 1,118만 개의 0.05%도 되지 않는 수입니다.
+- `model.fc.in_features`는 `fc`가 받는 입력 크기(512)를 돌려줍니다. 입력 크기를 직접 적지 않아도 되므로 다른 ResNet으로 바꿔도 코드가 유지됩니다.
+- 마지막 세 출력은 동결 상태를 확인하는 습관입니다. 앞쪽 층은 `False`, 새 분류기는 `True`여야 합니다.
+
+## 예제 3. 특징 추출 학습과 BN 통계 확인 (코드 6-2)
+
+동결한 층의 배치 정규화는 가중치가 고정되어도 `train()` 모드에서 이동 평균을 갱신합니다. 이를 막는 학습 루프를 만들고, 학습 전후로 동결 층과 BN 통계가 정말 그대로인지 확인합니다.
+
+```{python}
+criterion = nn.CrossEntropyLoss()
+
+
+def set_train_mode(model):
+    model.train()
+    for module in model.modules():
+        if isinstance(module, nn.BatchNorm2d):
+            module.eval()
+
+
+def run_epoch(model, loader, optimizer=None, train_mode=set_train_mode):
+    is_training = optimizer is not None
+    train_mode(model) if is_training else model.eval()
+    loss_sum, correct, count = 0.0, 0, 0
+
+    with torch.set_grad_enabled(is_training):
+        for x, y in loader:
+            x, y = x.to(device), y.to(device)
+            logits = model(x)
+            loss = criterion(logits, y)
+
+            if is_training:
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+
+            loss_sum += loss.item() * len(x)
+            correct += (logits.argmax(dim=1) == y).sum().item()
+            count += len(x)
+
+    return loss_sum / count, correct / count
+
+
+def fit(model, optimizer, epochs, train_mode=set_train_mode):
+    history = {"train_loss": [], "train_acc": [],
+               "val_loss": [], "val_acc": []}
+    start = time.perf_counter()
+    for epoch in range(1, epochs + 1):
+        tr_loss, tr_acc = run_epoch(
+            model, train_loader, optimizer, train_mode
+        )
+        va_loss, va_acc = run_epoch(model, val_loader)
+        history["train_loss"].append(tr_loss)
+        history["train_acc"].append(tr_acc)
+        history["val_loss"].append(va_loss)
+        history["val_acc"].append(va_acc)
+        print(f"[{epoch}] train_loss={tr_loss:.4f} "
+              f"train_acc={tr_acc:.3f} val_acc={va_acc:.3f}")
+    print(f"학습 시간: {time.perf_counter() - start:.1f}초")
+    return history
+
+
+torch.manual_seed(42)
+fe_model = build_feature_extractor(n_classes).to(device)
+fe_optimizer = optim.Adam(
+    [p for p in fe_model.parameters() if p.requires_grad], lr=1e-3
+)
+
+bn_before = fe_model.bn1.running_mean.clone()
+conv_before = fe_model.layer4[0].conv1.weight.clone()
+fc_before = fe_model.fc.weight.clone()
+
+fe_history = fit(fe_model, fe_optimizer, epochs=5)
+
+print("BN 이동 평균 유지:",
+      torch.equal(bn_before, fe_model.bn1.running_mean))
+print("동결 합성곱 유지:",
+      torch.equal(conv_before, fe_model.layer4[0].conv1.weight))
+print("fc 가중치 변화:",
+      not torch.equal(fc_before, fe_model.fc.weight))
+```
+
+**코드 설명**
+
+- `model.train()`은 모든 하위 모듈을 학습 모드로 바꿉니다. `set_train_mode()`는 그 직후 BN만 `eval()`로 되돌려 사전학습 때의 이동 평균이 갱신되지 않게 합니다. 에폭마다 `model.train()`을 따로 부르면 이 설정이 풀리므로 한 함수로 모았습니다.
+- `fit()`과 `run_epoch()`는 5주차의 학습 루프와 같습니다. 달라진 점은 학습 모드를 바꿀 수 있도록 `train_mode` 인자를 받는다는 것뿐이며, 전이학습이라고 `zero_grad → backward → step` 순서가 달라지지는 않습니다.
+- 옵티마이저에는 `requires_grad`가 켜진 파라미터만 전달했습니다. 동결한 파라미터는 기울기가 없어 갱신되지 않지만, 대상을 명시하면 의도가 분명합니다.
+- 학습 전에 BN 이동 평균, 동결한 합성곱 가중치, `fc` 가중치를 복사해 두고 학습 뒤에 비교했습니다. 앞의 둘은 그대로이고 `fc`만 바뀌어야 특징 추출이 의도대로 동작한 것입니다.
+- 5주차에서 처음부터 학습한 CNN과 같은 데이터·같은 에폭 수입니다. 사전학습 특징을 재사용하면 분류기만 학습해도 첫 에폭부터 검증 정확도가 높게 시작하는 것을 볼 수 있습니다.
+
+## 예제 4. 미세조정과 차등 학습률 (코드 6-3)
+
+앞쪽 층(`conv1`, `bn1`, `layer1`)은 동결하고 `layer2~layer4`는 작은 학습률, 새 `fc`는 큰 학습률로 학습합니다. 이번에는 BN도 학습 모드로 두어 목표 데이터의 통계에 적응하게 합니다.
+
+```{python}
+def build_finetune_model(num_classes):
+    weights = models.ResNet18_Weights.DEFAULT
+    model = models.resnet18(weights=weights)
+    model.fc = nn.Linear(model.fc.in_features, num_classes)
+
+    for module in (model.conv1, model.bn1, model.layer1):
+        for p in module.parameters():
+            p.requires_grad = False
+    return model
+
+
+def finetune_train_mode(model):
+    model.train()
+    for module in (model.bn1, model.layer1):
+        module.eval()
+
+
+torch.manual_seed(42)
+ft_model = build_finetune_model(n_classes).to(device)
+
+backbone = [
+    p for name in ("layer2", "layer3", "layer4")
+    for p in getattr(ft_model, name).parameters()
+]
+ft_optimizer = optim.Adam([
+    {"params": backbone, "lr": 1e-4},
+    {"params": ft_model.fc.parameters(), "lr": 1e-3},
+])
+
+total, trainable = count_parameters(ft_model)
+print(f"전체 {total:,}개 중 학습 대상 {trainable:,}개")
+print("파라미터 그룹 수:", len(ft_optimizer.param_groups))
+print("그룹별 학습률:",
+      [group["lr"] for group in ft_optimizer.param_groups])
+
+ft_history = fit(
+    ft_model, ft_optimizer, epochs=4, train_mode=finetune_train_mode
+)
+```
+
+**코드 설명**
+
+- 동결 대상은 저수준 특징을 담은 앞쪽 층입니다. `bn1`은 `conv1`과 짝을 이루므로 함께 동결하고, 학습 모드에서도 `bn1`과 `layer1`은 `eval()`로 유지해 이동 평균이 바뀌지 않게 했습니다.
+- 학습 대상은 `layer2~layer4`와 `fc`로 늘어나 특징 추출보다 훨씬 많은 약 1,102만 개입니다. 대신 이미 좋은 값에서 출발했으므로 사전학습 층에는 작은 학습률 `1e-4`를 줍니다.
+- 옵티마이저의 파라미터 그룹은 딕셔너리마다 다른 학습률을 줍니다. 새로 만든 `fc`는 무작위에서 시작하므로 10배 큰 `1e-3`으로 빨리 따라오게 합니다.
+- `param_groups`의 길이와 `lr`을 출력하는 것은 설정이 의도대로인지 바로 확인하는 방법입니다. 두 그룹이 `[0.0001, 0.001]`로 나와야 합니다.
+- 미세조정은 학습 시간이 특징 추출보다 길지만 보통 검증 정확도가 더 높습니다. 다음 예제에서 두 전략을 같은 그래프로 비교합니다.
+
+```{python}
+fe_test_loss, fe_test_acc = run_epoch(fe_model, test_loader)
+ft_test_loss, ft_test_acc = run_epoch(ft_model, test_loader)
+print(f"특징 추출  테스트 정확도: {fe_test_acc:.3f}")
+print(f"미세조정  테스트 정확도: {ft_test_acc:.3f}")
+
+fig, axes = plt.subplots(1, 2, figsize=(10, 3.5))
+for name, history in (("Feature extraction", fe_history),
+                      ("Fine-tuning", ft_history)):
+    epochs = range(1, len(history["val_acc"]) + 1)
+    axes[0].plot(epochs, history["train_loss"], marker="o", label=name)
+    axes[1].plot(epochs, history["val_acc"], marker="o", label=name)
+
+axes[0].set_xlabel("Epoch")
+axes[0].set_ylabel("Train loss")
+axes[1].set_xlabel("Epoch")
+axes[1].set_ylabel("Validation accuracy")
+for ax in axes:
+    ax.legend()
+    ax.grid(alpha=0.25)
+
+plt.tight_layout()
+plt.show()
+```
+
+**코드 설명**
+
+- 두 모델의 테스트 정확도는 학습이 끝난 뒤 한 번만 계산했습니다. 검증 데이터로 전략을 고르고, 테스트 데이터는 최종 확인에만 쓰는 5주차의 원칙을 그대로 따랐습니다.
+- 왼쪽 그래프에서 미세조정의 훈련 손실이 더 빨리 내려가는 것은 학습 가능한 파라미터가 많기 때문입니다. 오른쪽에서 검증 정확도가 함께 올라가는지, 훈련 손실만 낮아지는지를 구분해서 읽어야 합니다.
+- 훈련 손실이 훨씬 낮은데 검증 정확도가 따라 오르지 않으면 과적합의 신호입니다. 이 경우 동결 범위를 늘리거나 학습률을 낮추는 쪽이 안전합니다.
+- 실행 환경과 가중치 버전에 따라 소수 자릿수는 달라질 수 있으므로 두 전략의 상대적인 차이와 추세를 중심으로 해석합니다.
+
+## 예제 5. 상자 형식 변환, IoU와 NMS (코드 6-4, 6-5)
+
+YOLO 라벨을 픽셀 좌표로 바꾸고, IoU를 직접 구현해 `torchvision.ops.box_iou`와 비교합니다. 이어서 NMS로 중복 상자를 제거하고 결과를 그림으로 확인합니다.
+
+```{python}
+box_norm = torch.tensor([[0.5, 0.5, 0.4, 0.2]])
+W, H = 640, 480
+
+box_cxcywh = box_norm * torch.tensor([W, H, W, H])
+box_xyxy = box_convert(box_cxcywh, in_fmt="cxcywh", out_fmt="xyxy")
+print("픽셀 xyxy:", box_xyxy.tolist())
+
+
+def my_box_iou(a, b):
+    area_a = (a[:, 2] - a[:, 0]) * (a[:, 3] - a[:, 1])
+    area_b = (b[:, 2] - b[:, 0]) * (b[:, 3] - b[:, 1])
+    lt = torch.max(a[:, None, :2], b[None, :, :2])
+    rb = torch.min(a[:, None, 2:], b[None, :, 2:])
+    wh = (rb - lt).clamp(min=0)
+    inter = wh[..., 0] * wh[..., 1]
+    return inter / (area_a[:, None] + area_b[None, :] - inter)
+
+
+boxes = torch.tensor([[1.2, 2.4, 5.4, 6.8], [1.8, 3.1, 6.0, 7.5],
+                      [0.6, 1.8, 4.8, 6.2], [2.0, 3.0, 6.2, 7.4],
+                      [6.9, 2.2, 9.9, 5.4], [7.4, 2.6, 10.4, 5.8]])
+scores = torch.tensor([0.91, 0.84, 0.72, 0.55, 0.88, 0.67])
+
+print("직접 구현 == box_iou:",
+      torch.allclose(my_box_iou(boxes, boxes), box_iou(boxes, boxes)))
+print("상자 0과 1의 IoU:", round(my_box_iou(boxes, boxes)[0, 1].item(), 3))
+
+for threshold in (0.3, 0.5, 0.7):
+    keep = nms(boxes, scores, iou_threshold=threshold)
+    print(f"iou_threshold={threshold}: 남은 상자 {keep.tolist()}")
+```
+
+```{python}
+def draw_boxes(ax, boxes, scores, title, color):
+    for box, score in zip(boxes, scores):
+        x1, y1, x2, y2 = box.tolist()
+        ax.add_patch(patches.Rectangle(
+            (x1, y1), x2 - x1, y2 - y1,
+            fill=False, edgecolor=color, linewidth=2,
+        ))
+        ax.text(x1, y1 - 0.15, f"{score:.2f}", color=color, fontsize=8)
+    ax.set_xlim(0, 11)
+    ax.set_ylim(9, 0)
+    ax.set_aspect("equal")
+    ax.set_title(title)
+
+
+keep = nms(boxes, scores, iou_threshold=0.5)
+fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+draw_boxes(axes[0], boxes, scores, "Before NMS", "#FF6B5C")
+draw_boxes(axes[1], boxes[keep], scores[keep], "After NMS (0.5)", "#1AB18B")
+plt.tight_layout()
+plt.show()
+```
+
+**코드 설명**
+
+- YOLO 라벨은 이미지 크기로 나눈 `(cx, cy, w, h)`입니다. `[W, H, W, H]`를 곱하면 픽셀 단위가 되고, `box_convert`가 중심 형식을 `xyxy`로 바꿉니다. 중심 (320, 240)에 너비 256, 높이 96이므로 결과는 `[192, 192, 448, 288]`이어야 합니다.
+- `my_box_iou()`는 `a[:, None, :2]`와 `b[None, :, :2]`의 브로드캐스트로 모든 상자 쌍을 한 번에 비교합니다. 결과는 `(N, M)` 행렬이며 반복문이 필요 없습니다. `clamp(min=0)`은 겹치지 않는 쌍의 교집합 너비가 음수가 되는 것을 막습니다.
+- 직접 구현한 결과와 `box_iou`가 같다는 `True` 출력은 구현이 맞다는 가장 간단한 증거입니다. 직접 짠 함수는 이렇게 검증된 라이브러리와 비교해 확인합니다.
+- NMS는 확신도가 높은 상자부터 남기고, 그 상자와 IoU가 임계값 이상인 상자를 지웁니다. 임계값이 클수록 "많이 겹쳐도 다른 물체"로 보므로 중복이 더 많이 남습니다. 0.3과 0.5에서는 상자 0, 4만 남지만 0.7에서는 중복 상자가 5개까지 남습니다.
+- 그림에서 왼쪽 물체의 상자 네 개는 하나로, 오른쪽 물체의 상자 두 개도 하나로 정리됩니다. 서로 다른 물체의 상자는 겹치지 않으므로 둘 다 유지됩니다.
+
+## 예제 6. 초점 손실의 쉬운 예제 억제 (코드 6-6)
+
+배경처럼 이미 잘 맞힌 쉬운 예제의 손실이 초점 손실에서 얼마나 줄어드는지 숫자와 그래프로 확인합니다.
+
+```{python}
+def focal_loss(logits, targets, gamma=2.0, alpha=0.25):
+    ce = F.binary_cross_entropy_with_logits(
+        logits, targets, reduction="none"
+    )
+    p = torch.sigmoid(logits)
+    p_t = p * targets + (1 - p) * (1 - targets)
+    alpha_t = alpha * targets + (1 - alpha) * (1 - targets)
+    return (alpha_t * (1 - p_t) ** gamma * ce).mean()
+
+
+logit = torch.logit(torch.tensor([0.1]))
+target = torch.tensor([0.0])
+ce = F.binary_cross_entropy_with_logits(logit, target)
+fl = focal_loss(logit, target, alpha=0.5)
+print(f"CE {ce.item():.4f}  FL {fl.item() * 2:.4f}  "
+      f"비율 {(fl * 2 / ce).item():.3f}")
+
+p_t = torch.linspace(0.05, 0.99, 100)
+plt.figure(figsize=(6, 3.5))
+for gamma in (0, 1, 2, 5):
+    plt.plot(p_t, -((1 - p_t) ** gamma) * torch.log(p_t),
+             label=f"gamma={gamma}")
+plt.xlabel("p_t")
+plt.ylabel("Loss")
+plt.yscale("log")
+plt.legend()
+plt.grid(alpha=0.25)
+plt.tight_layout()
+plt.show()
+```
+
+**코드 설명**
+
+- 입력이 확률이 아닌 로짓이므로 `binary_cross_entropy_with_logits`로 교차 엔트로피를 안정적으로 계산하고, `sigmoid`로 확률을 따로 구합니다. `p_t`는 정답 클래스에 준 확률로, 정답이 1이면 `p`, 0이면 `1 - p`입니다.
+- `alpha=0.5`일 때 `alpha_t`는 모든 예제에서 0.5이므로 `2`를 곱하면 `alpha`의 효과가 사라집니다. 이렇게 하면 `(1 - p_t) ** gamma`만의 영향을 비교할 수 있고, 비율이 약 0.01로 나와야 합니다.
+- 그래프에서 `gamma=0`은 교차 엔트로피입니다. `gamma`가 커질수록 `p_t`가 1에 가까운 쉬운 예제의 손실이 급격히 줄어들고, `p_t`가 작은 어려운 예제의 손실은 상대적으로 유지됩니다.
+- 세로축을 로그 눈금으로 그린 이유는 쉬운 예제의 손실이 몇 자릿수씩 줄어드는 것을 한눈에 보기 위해서입니다. 이 성질 덕분에 배경 예제가 압도적으로 많아도 학습 신호가 어려운 예제에 집중됩니다.
+
+## 예제 7. YOLO 출력 디코딩 (코드 6-7, 6-8)
+
+실제 모델 없이 출력 텐서를 직접 만들어 상자로 해석하는 과정을 따라갑니다. 먼저 원형 YOLO의 $7\times7\times30$ 출력을, 다음에 YOLOv8의 DFL 출력을 디코딩합니다.
+
+```{python}
+S, B, C = 7, 2, 20
+out = torch.zeros(S, S, B * 5 + C)
+out[3, 3, :5] = torch.tensor([0.55, 0.55, 0.46, 0.46, 0.90])
+out[3, 3, 5:10] = torch.tensor([0.40, 0.60, 0.50, 0.44, 0.70])
+out[3, 3, 10 + 7] = 0.85
+out[3, 4, :5] = torch.tensor([0.10, 0.50, 0.48, 0.46, 0.60])
+out[3, 4, 10 + 7] = 0.80
+
+boxes_raw = out[..., :B * 5].reshape(S, S, B, 5)
+cls_prob = out[..., B * 5:]
+
+row, col = torch.meshgrid(torch.arange(S), torch.arange(S), indexing="ij")
+cx = (col[..., None] + boxes_raw[..., 0]) / S
+cy = (row[..., None] + boxes_raw[..., 1]) / S
+w, h, conf = boxes_raw[..., 2], boxes_raw[..., 3], boxes_raw[..., 4]
+xyxy = torch.stack(
+    [cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2], dim=-1
+).reshape(-1, 4)
+
+scores = (conf[..., None] * cls_prob[:, :, None, :]).reshape(-1, C)
+
+idx, cls = (scores > 0.2).nonzero(as_tuple=True)
+keep = batched_nms(xyxy[idx], scores[idx, cls], cls, iou_threshold=0.5)
+
+print("상자 후보:", tuple(xyxy.shape), "클래스 점수:", tuple(scores.shape))
+print("임계값을 넘은 (상자, 클래스) 쌍:", len(idx))
+for k in keep:
+    i, c = idx[k], cls[k]
+    print(f"클래스 {c.item()}  점수 {scores[i, c]:.2f}  "
+          f"상자 {[round(v, 3) for v in xyxy[i].tolist()]}")
+```
+
+```{python}
+reg_max = 16
+sizes, strides_ = (80, 40, 20), (8, 16, 32)
+
+
+def make_anchors(sizes, strides):
+    pts, st = [], []
+    for s, stride in zip(sizes, strides):
+        ys, xs = torch.meshgrid(
+            torch.arange(s), torch.arange(s), indexing="ij"
+        )
+        pts.append(torch.stack([xs, ys], dim=-1).view(-1, 2) + 0.5)
+        st.append(torch.full((s * s, 1), float(stride)))
+    return torch.cat(pts), torch.cat(st)
+
+
+def decode_dfl(raw, anchors, strides):
+    n = raw.shape[0]
+    prob = raw.view(n, 4, reg_max, -1).softmax(dim=2)
+    bins = torch.arange(reg_max, dtype=torch.float32).view(1, 1, reg_max, 1)
+    ltrb = (prob * bins).sum(dim=2).permute(0, 2, 1)
+    x1y1 = anchors - ltrb[..., :2]
+    x2y2 = anchors + ltrb[..., 2:]
+    return torch.cat([x1y1, x2y2], dim=-1) * strides
+
+
+anchors, strides = make_anchors(sizes, strides_)
+print("격자점:", tuple(anchors.shape), " stride:", tuple(strides.shape))
+
+raw = torch.randn(1, 4 * reg_max, 8400)
+print("무작위 출력 디코딩:", tuple(decode_dfl(raw, anchors, strides).shape))
+
+# 검증: 한 격자점의 l, t, r, b 분포를 3, 2, 4, 1 구간에 몰아 둔다
+target_ltrb = [3, 2, 4, 1]
+raw = torch.zeros(1, 4 * reg_max, 8400)
+point = 100
+for side, bin_index in enumerate(target_ltrb):
+    raw[0, side * reg_max + bin_index, point] = 30.0
+box = decode_dfl(raw, anchors, strides)[0, point]
+center = anchors[point]
+print("격자점 중심:", center.tolist(), " stride:", strides[point].item())
+print("디코딩된 상자(픽셀):", [round(v, 1) for v in box.tolist()])
+expected = torch.tensor([
+    center[0] - 3, center[1] - 2, center[0] + 4, center[1] + 1
+]) * strides[point]
+print("직접 계산한 상자와 일치:", torch.allclose(box, expected, atol=1e-3))
+```
+
+**코드 설명**
+
+- 원형 YOLO는 7×7 칸마다 상자 2개의 `(x, y, w, h, 확신도)`와 20개 클래스 확률을 냅니다. `reshape(S, S, B, 5)`로 상자 부분만 따로 읽고, 클래스 확률은 칸마다 하나이므로 상자 2개가 공유합니다.
+- 상자의 `(x, y)`는 칸 안에서의 상대 위치입니다. 칸 번호를 더하고 `S`로 나누면 이미지 비율의 중심 좌표가 되고, `w`, `h`는 처음부터 이미지 비율입니다.
+- 클래스별 점수는 `확신도 × 클래스 확률`입니다. 상자가 물체를 담고 있을 가능성과 물체가 그 클래스일 가능성을 곱해 하나의 점수로 만듭니다. 점수가 임계값을 넘은 쌍만 `batched_nms`에 넣어 클래스별로 중복을 제거합니다.
+- 인접한 두 칸이 같은 물체를 가리키는 예시는 NMS 뒤에 상자 하나만 남아야 합니다. 이론의 출력과 같이 점수 0.76 부근의 상자 하나가 나옵니다.
+- YOLOv8의 박스 분기는 변마다 `reg_max=16`개 구간의 분포를 냅니다. `softmax`로 확률로 만들고 구간 번호와의 가중합(기댓값)을 구하면 격자점에서 각 변까지의 거리 `l, t, r, b`가 됩니다. 이것이 DFL 디코딩입니다.
+- 이 거리를 격자점 중심에서 빼고 더해 좌상단·우하단 좌표를 만든 뒤 `stride`를 곱하면 원본 영상의 픽셀 좌표가 됩니다. 80×80, 40×40, 20×20 격자의 합은 6,400 + 1,600 + 400 = 8,400개입니다.
+- 무작위 출력은 shape만 확인할 수 있으므로, 분포를 3, 2, 4, 1번 구간에 몰아 둔 입력으로 디코딩 결과를 직접 계산한 값과 비교했습니다. 이처럼 정답을 아는 입력을 만들어 확인하면 좌표 변환 실수를 바로 찾을 수 있습니다.
+
+## 예제 8. ultralytics YOLOv8 사용법 (코드 6-9, 6-10)
+
+`ultralytics` 패키지와 사전학습 가중치(COCO)를 내려받아야 하므로 이 문서에서는 실행하지 않고 코드만 보여 줍니다. 로컬에서 `pip install ultralytics` 후 직접 실행해 보세요.
+
+```{python}
+#| eval: false
+from ultralytics import YOLO
+
+model = YOLO("yolov8n.pt")
+results = model.predict("dog.jpg", conf=0.25, iou=0.7)
+r = results[0]
+
+print(r.boxes.xyxy)
+print(r.boxes.conf)
+for c in r.boxes.cls.int().tolist():
+    print(r.names[c])
+r.show()
+```
+
+내 데이터로 미세조정하려면 `data.yaml`을 만들고 `train()`과 `val()`을 호출합니다.
+
+```{python}
+#| eval: false
+model = YOLO("yolov8n.pt")
+model.train(data="data.yaml", epochs=50, imgsz=640, batch=16)
+metrics = model.val()
+print(metrics.box.map50, metrics.box.map)
+```
+
+**코드 설명**
+
+- `predict()`의 `conf`는 확신도 임계값이고 `iou`는 NMS 임계값입니다. 예제 5와 7에서 직접 확인한 두 값이 이 인자 두 개에 해당합니다.
+- `r.boxes.xyxy`는 픽셀 단위 `xyxy` 상자, `conf`는 확신도, `cls`는 클래스 번호입니다. 예제 5의 상자 형식과 같으므로 변환 없이 그대로 쓸 수 있습니다.
+- `train()`은 `yolov8n.pt`의 사전학습 가중치에서 출발하는 미세조정입니다. 예제 4의 미세조정과 같은 발상이며, 데이터 폴더와 클래스 이름은 `data.yaml`에 적습니다.
+- `val()`은 검증 세트에서 mAP@0.5와 mAP@0.5:0.95를 계산합니다. 두 값 중 뒤의 값이 더 낮게 나오는 것이 정상입니다.
+
+## 예제 9. 업샘플링과 U-Net의 shape (코드 6-11, 6-12)
+
+보간과 전치 합성곱으로 해상도를 2배로 키우고, U-Net의 인코더·디코더·스킵 연결에서 shape가 어떻게 변하는지 확인합니다.
+
+```{python}
+x = torch.tensor([[1., 2.], [3., 4.]]).view(1, 1, 2, 2)
+near = F.interpolate(x, scale_factor=2, mode="nearest")
+bil = F.interpolate(
+    x, scale_factor=2, mode="bilinear", align_corners=False
+)
+print("최근접:", tuple(near.shape), " 쌍선형:", tuple(bil.shape))
+print(bil[0, 0])
+
+up = nn.ConvTranspose2d(
+    in_channels=1, out_channels=1, kernel_size=2, stride=2, bias=False
+)
+with torch.no_grad():
+    up.weight.copy_(torch.tensor([[1.0, 0.5], [0.5, 0.2]]).view(1, 1, 2, 2))
+print(up(x)[0, 0].detach())
+```
+
+```{python}
+class DoubleConv(nn.Sequential):
+    def __init__(self, cin, cout):
+        super().__init__(
+            nn.Conv2d(cin, cout, 3, padding=1, bias=False),
+            nn.BatchNorm2d(cout), nn.ReLU(inplace=True),
+            nn.Conv2d(cout, cout, 3, padding=1, bias=False),
+            nn.BatchNorm2d(cout), nn.ReLU(inplace=True),
+        )
+
+
+class Down(nn.Sequential):
+    def __init__(self, cin, cout):
+        super().__init__(nn.MaxPool2d(2), DoubleConv(cin, cout))
+
+
+class Up(nn.Module):
+    def __init__(self, cin, cout):
+        super().__init__()
+        self.up = nn.ConvTranspose2d(cin, cout, kernel_size=2, stride=2)
+        self.conv = DoubleConv(cout * 2, cout)
+
+    def forward(self, x, skip):
+        x = self.up(x)
+        x = torch.cat([x, skip], dim=1)
+        return self.conv(x)
+
+
+class UNet(nn.Module):
+    def __init__(self, in_channels=3, num_classes=2, base=64, depth=4):
+        super().__init__()
+        c = [base * 2 ** i for i in range(depth + 1)]
+        self.inc = DoubleConv(in_channels, c[0])
+        self.downs = nn.ModuleList(
+            Down(c[i], c[i + 1]) for i in range(depth)
+        )
+        self.ups = nn.ModuleList(
+            Up(c[i + 1], c[i]) for i in reversed(range(depth))
+        )
+        self.outc = nn.Conv2d(c[0], num_classes, kernel_size=1)
+
+    def forward(self, x, show_shapes=False):
+        features = [self.inc(x)]
+        for down in self.downs:
+            features.append(down(features[-1]))
+        if show_shapes:
+            for level, feature in enumerate(features):
+                print(f"인코더 {level}:", tuple(feature.shape))
+
+        x = features.pop()
+        for up in self.ups:
+            x = up(x, features.pop())
+            if show_shapes:
+                print("디코더:", tuple(x.shape))
+        return self.outc(x)
+
+
+def count_params(model):
+    return sum(p.numel() for p in model.parameters())
+
+
+unet = UNet(in_channels=3, num_classes=2, base=64, depth=4)
+with torch.no_grad():
+    out = unet(torch.randn(1, 3, 256, 256), show_shapes=True)
+print("출력:", tuple(out.shape))
+print(f"파라미터: {count_params(unet) / 1e6:.1f}M")
+```
+
+**코드 설명**
+
+- `interpolate`는 학습할 파라미터 없이 정해진 규칙으로 해상도를 키웁니다. 최근접은 값을 복사하고, 쌍선형은 주변 값을 섞어 부드럽게 만듭니다. 둘 다 출력이 `(1, 1, 4, 4)`입니다.
+- `ConvTranspose2d(kernel_size=2, stride=2)`는 입력 한 칸마다 2×2 패턴을 찍어 해상도를 키우며 그 패턴이 학습 대상입니다. 입력 1에는 가중치 `[[1, .5], [.5, .2]]`가 그대로, 입력 2에는 2배로 곱해져 배치되는 것을 출력에서 확인할 수 있습니다.
+- `DoubleConv`는 3×3 합성곱, BN, ReLU를 두 번 반복합니다. `padding=1`이므로 공간 크기는 유지되고 채널 수만 바뀝니다. BN이 있으면 편향이 필요 없어 `bias=False`로 둡니다.
+- `Down`은 최대 풀링으로 해상도를 절반으로 줄이고 채널을 두 배로 늘립니다. 256→128→64→32→16으로 줄어들며 채널은 64→128→256→512→1024로 늘어납니다.
+- `Up`은 전치 합성곱으로 해상도를 두 배로 키운 뒤 같은 해상도의 인코더 특징을 채널 축으로 이어 붙입니다(`torch.cat`). 그래서 이어 붙인 뒤의 채널은 `cout * 2`이고, `DoubleConv(cout * 2, cout)`이 이를 다시 `cout`으로 줄입니다.
+- 이론의 코드는 층마다 변수를 따로 두었고, 여기서는 `depth`로 단계 수를 조절할 수 있도록 `ModuleList`로 정리했습니다. `base=64, depth=4`이면 이론의 U-Net과 같은 구조이며 출력은 `(1, 2, 256, 256)`, 약 31M 파라미터입니다.
+- 출력층의 1×1 합성곱은 픽셀마다 클래스 점수 2개를 만듭니다. 분류와 달리 공간 크기가 입력과 같게 유지되는 것이 분할 모델의 특징입니다.
+
+## 예제 10. 도형 분할 학습과 평가 (코드 6-13)
+
+CPU에서 빠르게 돌릴 수 있도록 무작위 원과 사각형이 있는 합성 영상을 만들어 U-Net을 학습합니다. 정답 마스크를 직접 알고 있으므로 분할 결과를 정확하게 평가할 수 있습니다.
+
+```{python}
+def make_shapes(n, size=64, radius_range=(5, 10), seed=0):
+    g = torch.Generator().manual_seed(seed)
+    yy, xx = torch.meshgrid(
+        torch.arange(size), torch.arange(size), indexing="ij"
+    )
+    images = torch.zeros(n, 3, size, size)
+    masks = torch.zeros(n, size, size, dtype=torch.long)
+    low, high = radius_range
+
+    for i in range(n):
+        images[i] = 0.15 + 0.1 * torch.rand(3, 1, 1, generator=g)
+        for _ in range(int(torch.randint(1, 4, (1,), generator=g))):
+            cx, cy = torch.randint(10, size - 10, (2,), generator=g).tolist()
+            r = int(torch.randint(low, high, (1,), generator=g))
+            if torch.rand(1, generator=g) < 0.5:
+                shape = (xx - cx) ** 2 + (yy - cy) ** 2 <= r * r
+            else:
+                shape = ((xx - cx).abs() <= r) & ((yy - cy).abs() <= r)
+            color = 0.6 + 0.4 * torch.rand(3, 1, 1, generator=g)
+            images[i] = torch.where(
+                shape, color.expand(3, size, size), images[i]
+            )
+            masks[i][shape] = 1
+
+    images = images + 0.08 * torch.randn(images.shape, generator=g)
+    return images.clamp(0, 1), masks
+
+
+x_train, y_train = make_shapes(600, seed=1)
+x_val, y_val = make_shapes(100, seed=2)
+
+print("영상:", tuple(x_train.shape), " 마스크:", tuple(y_train.shape))
+print(f"전경 픽셀 비율: {y_train.float().mean().item():.3f}")
+
+fig, axes = plt.subplots(2, 4, figsize=(9, 4.5))
+for k in range(4):
+    axes[0, k].imshow(x_train[k].permute(1, 2, 0))
+    axes[0, k].set_title("Image")
+    axes[1, k].imshow(y_train[k], cmap="gray")
+    axes[1, k].set_title("Mask")
+for ax in axes.ravel():
+    ax.axis("off")
+plt.tight_layout()
+plt.show()
+```
+
+**코드 설명**
+
+- 영상은 약간의 색 차이가 있는 어두운 배경에 밝은 원이나 사각형을 1~3개 그리고 잡음을 더해 만듭니다. 마스크의 같은 위치는 1이고 나머지는 0이므로 정답이 픽셀 단위로 정확합니다.
+- 시드가 다른 생성기로 훈련 600장과 검증 100장을 따로 만들었기 때문에 두 데이터에 같은 영상이 섞이지 않습니다.
+- 전경 픽셀 비율은 약 9%입니다. 분할에서는 대부분의 픽셀이 배경이므로 모든 픽셀을 배경이라고 예측해도 픽셀 정확도가 90%를 넘습니다. 그래서 정확도 대신 IoU나 Dice로 평가합니다.
+
+```{python}
+def dice_loss(logits, target, eps=1e-6):
+    prob = logits.softmax(dim=1)[:, 1]
+    t = (target == 1).float()
+    inter = (prob * t).sum(dim=(1, 2))
+    union = prob.sum(dim=(1, 2)) + t.sum(dim=(1, 2))
+    return 1 - ((2 * inter + eps) / (union + eps)).mean()
+
+
+def iou_score(logits, target, eps=1e-6):
+    pred = logits.argmax(dim=1) == 1
+    t = target == 1
+    inter = (pred & t).sum().float()
+    return ((inter + eps) / ((pred | t).sum().float() + eps)).item()
+
+
+# 정답을 알고 있는 경우로 두 함수를 검증한다
+perfect = F.one_hot(y_val[:4], 2).permute(0, 3, 1, 2).float() * 20
+print("완벽한 예측의 IoU:", round(iou_score(perfect, y_val[:4]), 3))
+print("완벽한 예측의 Dice 손실:",
+      round(dice_loss(perfect, y_val[:4]).item(), 3))
+all_background = F.one_hot(torch.zeros_like(y_val[:4]), 2)
+all_background = all_background.permute(0, 3, 1, 2).float() * 20
+print("전부 배경 예측의 픽셀 정확도:",
+      round((all_background.argmax(1) == y_val[:4]).float().mean().item(), 3),
+      " IoU:", round(iou_score(all_background, y_val[:4]), 3))
+```
+
+```{python}
+def train_unet(model_in, epochs=8, batch_size=32, seed=42):
+    torch.manual_seed(seed)
+    model = model_in.to(device)
+    optimizer = optim.Adam(model.parameters(), lr=3e-3)
+    losses = []
+    start = time.perf_counter()
+
+    for epoch in range(1, epochs + 1):
+        model.train()
+        order = torch.randperm(len(x_train))
+        epoch_loss = 0.0
+        for i in range(0, len(order), batch_size):
+            idx = order[i:i + batch_size]
+            logits = model(x_train[idx])
+            loss = F.cross_entropy(logits, y_train[idx])
+            loss = loss + dice_loss(logits, y_train[idx])
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            epoch_loss += loss.item() * len(idx)
+        losses.append(epoch_loss / len(order))
+        if epoch in (1, epochs // 2, epochs):
+            print(f"[{epoch}] 훈련 손실={losses[-1]:.4f}")
+
+    model.eval()
+    with torch.no_grad():
+        val_logits = model(x_val)
+    print(f"검증 IoU: {iou_score(val_logits, y_val):.3f}  "
+          f"({time.perf_counter() - start:.0f}초)")
+    return model, val_logits
+
+
+small_unet, val_logits = train_unet(UNet(base=8, depth=3))
+print(f"파라미터: {count_params(small_unet):,}")
+```
+
+```{python}
+pred = val_logits.argmax(dim=1)
+
+fig, axes = plt.subplots(3, 5, figsize=(10, 6.2))
+for k in range(5):
+    axes[0, k].imshow(x_val[k].permute(1, 2, 0))
+    axes[1, k].imshow(y_val[k], cmap="gray")
+    axes[2, k].imshow(pred[k], cmap="gray")
+axes[0, 0].set_ylabel("Image")
+axes[1, 0].set_ylabel("Ground truth")
+axes[2, 0].set_ylabel("Prediction")
+for ax in axes.ravel():
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+plt.tight_layout()
+plt.show()
+```
+
+**코드 설명**
+
+- `dice_loss()`는 전경 클래스의 softmax 확률과 정답 마스크의 겹침 정도를 `2 × 교집합 / (예측 합 + 정답 합)`으로 계산하고 1에서 뺍니다. `eps`는 전경이 하나도 없는 영상에서 0으로 나누는 것을 막습니다.
+- `iou_score()`는 `argmax`로 얻은 이진 예측과 정답의 교집합을 합집합으로 나눕니다. 예제 5의 상자 IoU를 픽셀 마스크에 적용한 것과 같습니다.
+- 검증 코드에서 완벽한 예측은 IoU 1, Dice 손실 0이 나옵니다. 반면 전부 배경으로 예측해도 픽셀 정확도는 90%를 넘지만 IoU는 0입니다. 정확도가 분할에서 왜 부적절한지 숫자로 확인할 수 있습니다.
+- 학습 손실은 `CrossEntropyLoss`에 Dice 손실을 더한 값입니다. 교차 엔트로피는 모든 픽셀에서 안정적으로 기울기를 주고, Dice는 전경의 겹침 자체를 직접 높입니다. `F.cross_entropy`는 `(N, 2, H, W)` 로짓과 `(N, H, W)` 클래스 번호를 그대로 받습니다.
+- 이 실습은 `base=8, depth=3`인 작은 U-Net을 사용해 CPU에서 빠르게 학습합니다. 구조는 예제 9와 같고 채널 수와 단계 수만 줄었으며, 파라미터는 약 12만 개입니다.
+- 마지막 그림에서 예측 마스크가 정답과 거의 같다면 인코더가 만든 특징과 스킵 연결의 세부 위치 정보가 디코더에서 잘 결합된 것입니다. 이론에서 설명한 U-Net의 핵심 아이디어를 직접 볼 수 있습니다.
+
+## 실습문제
+
+예제의 함수와 모델을 바탕으로 객체탐지 요소와 전이학습, 분할 모델을 직접 확장해 봅니다. `TODO`를 채워 실행하고, 결과의 원인을 이론과 연결해 설명하세요.
+
+### 문제 1. 상자 변환과 IoU
+
+COCO 형식의 상자 `(x, y, w, h)`는 좌상단 좌표와 너비·높이로 표현합니다. 아래 두 상자를 `xyxy`로 변환하고 IoU를 직접 계산한 뒤 `box_iou`와 비교하세요.
+
+```python
+coco_boxes = torch.tensor([
+    [100., 100., 200., 100.],   # x, y, w, h
+    [150., 120., 200., 100.],
+])
+
+xyxy_boxes = # TODO: box_convert(coco_boxes, in_fmt="xywh", out_fmt="xyxy")
+
+# TODO: my_box_iou로 두 상자의 IoU를 계산하고 손으로 계산한 값과 비교
+# 힌트: 교집합 가로 150, 세로 80 / 각 상자 넓이 20000
+
+print("xyxy:", xyxy_boxes)
+print("직접 구현:", my_box_iou(xyxy_boxes, xyxy_boxes)[0, 1].item())
+print("box_iou:", box_iou(xyxy_boxes, xyxy_boxes)[0, 1].item())
+```
+
+### 문제 2. NMS 임계값과 클래스별 NMS
+
+예제 5의 상자에 대해 임계값을 0.1부터 0.9까지 바꾸며 남는 상자 수를 그래프로 그리세요. 이어서 상자 0, 1, 4에는 클래스 0, 상자 2, 3, 5에는 클래스 1을 지정하고 `batched_nms`를 적용하여 결과가 `nms`와 어떻게 다른지 설명합니다.
+
+```python
+thresholds = [round(0.1 * k, 1) for k in range(1, 10)]
+kept_counts = []
+
+for threshold in thresholds:
+    # TODO: nms를 적용하고 남은 상자 수를 kept_counts에 추가
+    pass
+
+# TODO: 임계값과 남은 상자 수를 꺾은선 그래프로 표시
+
+class_ids = torch.tensor([0, 0, 1, 1, 0, 1])
+keep_by_class = # TODO: batched_nms(boxes, scores, class_ids, iou_threshold=0.5)
+print("nms:", nms(boxes, scores, iou_threshold=0.5).tolist())
+print("batched_nms:", keep_by_class.tolist())
+```
+
+### 문제 3. Flowers102 전이학습
+
+5주차 문제 1에서 사용한 Flowers102를 ResNet-18 특징 추출로 분류하세요. 이미지는 64×64로 줄이고 ImageNet 정규화를 사용합니다. 학습 대상 파라미터 수를 출력하고, 훈련·검증 정확도를 5주차에서 처음부터 학습한 CNN과 비교하세요. 102개 클래스를 구분하므로 `fc`의 출력 크기가 달라지는 점에 주의합니다.
+
+```python
+flower_transform = transforms.Compose([
+    # TODO: (64, 64)로 조정, 텐서 변환, ImageNet 평균·표준편차로 정규화
+])
+
+flower_train = datasets.Flowers102(
+    root="data", split="train", transform=flower_transform, download=True
+)
+flower_val = datasets.Flowers102(
+    root="data", split="val", transform=flower_transform, download=True
+)
+
+flower_train_loader = DataLoader(flower_train, batch_size=32, shuffle=True)
+flower_val_loader = DataLoader(flower_val, batch_size=64, shuffle=False)
+
+flower_model = # TODO: build_feature_extractor(102)
+total, trainable = count_parameters(flower_model)
+print(f"전체 {total:,}개 중 학습 대상 {trainable:,}개")
+
+# TODO: 학습 대상 파라미터만 Adam(lr=1e-3)에 전달
+# TODO: set_train_mode로 10에폭 학습하고 에폭별 검증 정확도 출력
+# 주의: run_epoch는 예제 3의 전역 criterion을 사용합니다.
+```
+
+### 문제 4. BN 학습 모드의 영향
+
+예제 3에서 `set_train_mode` 대신 `model.train()`만 호출하는 특징 추출 모델을 같은 조건으로 학습하세요. 학습 뒤 `bn1.running_mean`이 사전학습 값과 달라졌는지 확인하고, 검증 정확도를 비교하여 이론에서 BN을 평가 모드로 두라고 한 이유를 설명합니다.
+
+```python
+def plain_train_mode(model):
+    # TODO: model.train()만 호출
+    pass
+
+torch.manual_seed(42)
+plain_model = build_feature_extractor(n_classes).to(device)
+pretrained_mean = plain_model.bn1.running_mean.clone()
+
+plain_optimizer = # TODO
+plain_history = fit(
+    plain_model, plain_optimizer, epochs=5, train_mode=plain_train_mode
+)
+
+print("bn1 이동 평균이 변했는가:",
+      # TODO: torch.equal로 비교한 결과를 반대로
+      )
+print("BN 고정 검증 정확도:", fe_history["val_acc"][-1])
+print("BN 갱신 검증 정확도:", plain_history["val_acc"][-1])
+```
+
+### 문제 5. 스킵 연결의 효과
+
+스킵 연결이 없는 U-Net을 만들어 예제 10과 같은 조건으로 학습하세요. 디코더에서 `torch.cat`을 하지 않으면 `DoubleConv`의 입력 채널도 달라집니다. 스킵 연결이 있는 모델과 검증 IoU를 비교하고, 경계가 어떻게 달라지는지 예측 마스크로 확인합니다.
+
+```python
+class UpNoSkip(nn.Module):
+    def __init__(self, cin, cout):
+        super().__init__()
+        self.up = nn.ConvTranspose2d(cin, cout, kernel_size=2, stride=2)
+        self.conv = # TODO: 스킵이 없으므로 입력 채널은 cout
+    def forward(self, x, skip):
+        # TODO: 업샘플링 뒤 skip을 사용하지 않고 DoubleConv 적용
+        pass
+
+class UNetNoSkip(UNet):
+    def __init__(self, in_channels=3, num_classes=2, base=8, depth=3):
+        super().__init__(in_channels, num_classes, base, depth)
+        c = [base * 2 ** i for i in range(depth + 1)]
+        self.ups = nn.ModuleList(
+            UpNoSkip(c[i + 1], c[i]) for i in reversed(range(depth))
+        )
+
+no_skip_model, no_skip_logits = train_unet(UNetNoSkip())
+print("스킵 있음 IoU:", iou_score(val_logits, y_val))
+print("스킵 없음 IoU:", iou_score(no_skip_logits, y_val))
+
+# TODO: 두 모델의 예측 마스크를 같은 검증 영상에서 나란히 시각화
+```

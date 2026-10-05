@@ -20,3 +20,8 @@ course.csl
 # 별도 문제(시험/과제) 워크시트 — 공개 저장소 제외
 *-quizbook.qmd
 *-quizbook.html
+
+# 로컬 전용 Quarto 환경 설정 (경로가 PC마다 다름)
+_environment.local
+
+/_*.local

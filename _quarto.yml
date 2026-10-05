@@ -36,6 +36,7 @@ book:
     - part: "6주차 · 전이학습·객체탐지와 최신 이미지 모델"
       chapters:
         - week06_lecture.qmd
+        - week06_code.qmd
     - part: "7주차 · 생성 모델 입문"
       chapters:
         - week07_lecture.qmd
