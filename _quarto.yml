@@ -40,6 +40,7 @@ book:
       chapters:
         - week06_lecture.qmd
         - week06_code.qmd
+        - week06_quiz.qmd
     - part: "7주차 · 생성 모델 입문"
       chapters:
         - week07_lecture.qmd
