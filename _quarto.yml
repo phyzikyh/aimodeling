@@ -44,6 +44,7 @@ book:
     - part: "7주차 · 생성 모델 입문"
       chapters:
         - week07_lecture.qmd
+        - week07_quiz.qmd
   page-footer:
     left: "AI 모델링 실습"
     right: "2026-2학기"
