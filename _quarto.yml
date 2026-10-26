@@ -45,6 +45,10 @@ book:
       chapters:
         - week07_lecture.qmd
         - week07_quiz.qmd
+    - part: "9·10주차 · 텍스트 임베딩·트랜스포머·BERT"
+      chapters:
+        - week09_10_lecture.qmd
+        - week09_10_quiz.qmd
   page-footer:
     left: "AI 모델링 실습"
     right: "2026-2학기"
