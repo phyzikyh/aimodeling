@@ -49,6 +49,10 @@ book:
       chapters:
         - week09_10_lecture.qmd
         - week09_10_quiz.qmd
+    - part: "10·11주차 · LLM·파인튜닝·RAG"
+      chapters:
+        - week10_11_lecture.qmd
+        - week10_11_quiz.qmd
   page-footer:
     left: "AI 모델링 실습"
     right: "2026-2학기"
