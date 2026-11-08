@@ -53,6 +53,9 @@ book:
       chapters:
         - week10_11_lecture.qmd
         - week10_11_quiz.qmd
+    - part: "12·13주차 · 멀티모달·확산 모델"
+      chapters:
+        - week12_13_lecture.qmd
   page-footer:
     left: "AI 모델링 실습"
     right: "2026-2학기"
