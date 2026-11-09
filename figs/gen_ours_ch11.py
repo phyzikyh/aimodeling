@@ -11,6 +11,7 @@ from _ours import new_ax, heading, zone, BRAND, CORAL, INDIGO, AMBER, ROSE, INK,
 from gen_ours_ch9 import rb, tx, arr, blend, save
 
 mpl.rcParams["mathtext.fontset"] = "dejavusans"
+MONO = "#3a3f45"  # 색 없이 그리는 도식의 선 색
 
 
 # ============ 그림 11-1: 서로 다른 모달리티를 하나의 표현 공간으로 ============
@@ -121,11 +122,11 @@ def fig_schedule():
 def fig_ddpm_train():
     fig, ax = new_ax(14.0, 6.2, (0, 28.0), (0, 12.4))
     heading(ax, 0.4, 11.6, "DDPM 학습 한 단계: 섞은 노이즈를 맞히게 합니다")
-    steps = [("① 깨끗한 이미지", r"$x_0$를 학습 데이터에서" + "\n뽑습니다", TINT["brand"], BRAND, 0.6),
-             ("② 단계와 노이즈", r"$t$는 1~T 중 무작위" + "\n" + r"$\epsilon$은 표준 가우시안", TINT["indigo"], INDIGO, 5.9),
-             ("③ 섞기", r"$x_t=\sqrt{\bar{\alpha}_t}\,x_0$" + "\n" + r"$+\sqrt{1-\bar{\alpha}_t}\,\epsilon$", TINT["amber"], AMBER, 11.2),
-             ("④ U-Net 예측", r"$\epsilon_\theta(x_t,t)$가" + "\n" + r"$\epsilon$을 추정합니다", TINT["rose"], ROSE, 16.5),
-             ("⑤ 손실", r"$\|\epsilon-\epsilon_\theta(x_t,t)\|^2$" + "\n" + "을 줄입니다", TINT["coral"], CORAL, 21.8)]
+    steps = [("① 깨끗한 이미지", r"$x_0$를 학습 데이터에서" + "\n뽑습니다", "#ffffff", MONO, 0.6),
+             ("② 단계와 노이즈", r"$t$는 1~T 중 무작위" + "\n" + r"$\epsilon$은 표준 가우시안", "#ffffff", MONO, 5.9),
+             ("③ 섞기", r"$x_t=\sqrt{\bar{\alpha}_t}\,x_0$" + "\n" + r"$+\sqrt{1-\bar{\alpha}_t}\,\epsilon$", "#ffffff", MONO, 11.2),
+             ("④ U-Net 예측", r"$\epsilon_\theta(x_t,t)$가" + "\n" + r"$\epsilon$을 추정합니다", "#ffffff", MONO, 16.5),
+             ("⑤ 손실", r"$\|\epsilon-\epsilon_\theta(x_t,t)\|^2$" + "\n" + "을 줄입니다", "#ffffff", MONO, 21.8)]
     for k, (t1, t2, fc, ec, x) in enumerate(steps):
         rb(ax, x, 4.0, 5.0, 5.2, fc, ec, lw=2.0, shadow=True)
         tx(ax, x + 2.5, 8.2, t1, fs=11.5, bold=True)
@@ -143,14 +144,14 @@ def fig_sampling():
     heading(ax, 0.4, 10.4, "생성(샘플링): 순수 노이즈에서 시작해 노이즈를 조금씩 덜어 냅니다")
     xs = [1.0, 6.0, 11.0, 16.0, 21.0]
     labs = [r"$x_T$" + "\n순수 노이즈", r"$x_{T-1}$", "···", r"$x_1$", r"$x_0$" + "\n생성된 이미지"]
-    cols = [CORAL, AMBER, SUB, INDIGO, BRAND]
+    cols = [MONO] * 5
     for x, l, c in zip(xs, labs, cols):
-        rb(ax, x, 4.0, 4.2, 3.6, blend(c, 0.18) if c != SUB else TINT["gray"], c, lw=2.0, shadow=True)
+        rb(ax, x, 4.0, 4.2, 3.6, "#ffffff", c, lw=2.0, shadow=True)
         tx(ax, x + 2.1, 5.8, l, fs=11.5, bold=True)
     for k in range(4):
         arr(ax, (xs[k] + 4.25, 5.8), (xs[k + 1] - 0.05, 5.8), SUB, lw=2.4)
     for k in (0, 1, 3):
-        tx(ax, xs[k] + 4.6, 7.1, "U-Net", fs=9, color=ROSE, bold=True)
+        tx(ax, xs[k] + 4.6, 7.1, "U-Net", fs=9, color=INK, bold=True)
     tx(ax, 14.0, 2.6, r"각 단계: $\hat{\epsilon}=\epsilon_\theta(x_t,t)$로 노이즈를 추정하고, 그만큼 덜어 내 $x_{t-1}$을 만듭니다", fs=11)
     tx(ax, 14.0, 1.6, "원 논문은 T=1000단계, 스테이블 디퓨전의 기본 설정은 50단계입니다", fs=10, color=SUB)
     save(fig, "ch11_sampling.png")
