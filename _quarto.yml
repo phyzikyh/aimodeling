@@ -1,8 +1,6 @@
 project:
   type: book
   output-dir: _book
-  resources:
-    - downloads/*
 
 book:
   title: "AI 모델링 실습"
@@ -59,9 +57,6 @@ book:
       chapters:
         - week12_13_lecture.qmd
         - week12_13_quiz.qmd
-    - part: "보충수업"
-      chapters:
-        - supplement.qmd
   page-footer:
     left: "AI 모델링 실습"
     right: "2026-2학기"
