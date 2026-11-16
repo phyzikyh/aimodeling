@@ -57,6 +57,10 @@ book:
       chapters:
         - week12_13_lecture.qmd
         - week12_13_quiz.qmd
+    - part: "13주차 · 프롬프트 엔지니어링·RAG"
+      chapters:
+        - week13_lecture.qmd
+        - week13_quiz.qmd
   page-footer:
     left: "AI 모델링 실습"
     right: "2026-2학기"
