@@ -61,6 +61,9 @@ book:
       chapters:
         - week13_lecture.qmd
         - week13_quiz.qmd
+    - part: "14주차 · 강화학습·RLHF·DPO"
+      chapters:
+        - week14_lecture.qmd
   page-footer:
     left: "AI 모델링 실습"
     right: "2026-2학기"
